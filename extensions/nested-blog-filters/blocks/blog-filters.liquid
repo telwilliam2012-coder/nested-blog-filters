@@ -1,0 +1,101 @@
+{% liquid
+  assign page_size = block.settings.page_size | default: 12
+  assign proxy_path = block.settings.proxy_path | default: '/apps/nested-filters' | remove_first: '/'
+%}
+
+{% if blog != blank %}
+  <nested-blog-filters
+    id="nested-blog-filters-{{ block.id }}"
+    class="nbf"
+    data-blog-id="gid://shopify/Blog/{{ blog.id }}"
+    data-blog-url="{{ blog.url | escape }}"
+    data-proxy-url="{{ routes.root_url | append: proxy_path | escape }}"
+    data-page-size="{{ page_size }}"
+    data-locale="{{ request.locale.iso_code | escape }}"
+    data-design-mode="{{ request.design_mode }}"
+    data-loading="{{ 'filters.loading' | t | escape }}"
+    data-error="{{ 'filters.error' | t | escape }}"
+    data-empty="{{ 'filters.empty' | t | escape }}"
+    data-unconfigured="{{ 'filters.unconfigured' | t | escape }}"
+    data-results-label="{{ 'filters.results' | t: count: '[count]' | escape }}"
+    data-page-label="{{ 'filters.page' | t: current: '[current]', total: '[total]' | escape }}"
+    data-read-label="{{ 'filters.read' | t | escape }}"
+    data-choose-label="{{ 'filters.choose' | t | escape }}"
+    data-remove-label="{{ 'filters.remove' | t: value: '[value]' | escape }}"
+    data-empty-title="{{ 'filters.empty_title' | t | escape }}"
+    {{ block.shopify_attributes }}
+  >
+    <header class="nbf__header">
+      <p class="nbf__eyebrow">{{ 'filters.eyebrow' | t }}</p>
+      <h2 class="nbf__heading">{{ 'filters.heading' | t }}</h2>
+      <p>{{ 'filters.intro' | t }}</p>
+    </header>
+    <section class="nbf__toolbar" data-toolbar aria-label="{{ 'filters.panel_title' | t | escape }}" hidden>
+      <div class="nbf__panel-heading">
+        <h3 class="nbf__filter-title">{{ 'filters.panel_title' | t }}</h3>
+        <button class="nbf__clear" type="button" data-clear disabled>{{ 'filters.clear' | t }}</button>
+      </div>
+      <div class="nbf__filters" data-filters></div>
+      <div class="nbf__active" data-active aria-label="{{ 'filters.active' | t | escape }}" hidden></div>
+      <p class="nbf__guide">{{ 'filters.guide' | t }}</p>
+    </section>
+    <p class="nbf__status" data-status role="status" aria-live="polite" aria-atomic="true"></p>
+    <button class="nbf__button" type="button" data-retry hidden>{{ 'filters.retry' | t }}</button>
+    <div data-results-container aria-busy="false">
+      <ul class="nbf__articles" data-results>
+        {% for article in blog.articles limit: page_size %}
+          <li class="nbf__card">
+            {% if article.image %}
+              <a href="{{ article.url | escape }}">{{ article.image | image_url: width: 600 | image_tag: class: 'nbf__image', loading: 'lazy', widths: '240, 400, 600', sizes: '(max-width: 480px) 100vw, (max-width: 750px) 50vw, 25vw' }}</a>
+            {% endif %}
+            <div class="nbf__card-body">
+              <h3><a href="{{ article.url | escape }}">{{ article.title | escape }}</a></h3>
+              <time datetime="{{ article.published_at | date: '%Y-%m-%d' }}">{{ article.published_at | date: format: 'abbreviated_date' }}</time>
+              <a class="nbf__read" href="{{ article.url | escape }}">{{ 'filters.read' | t }}<span class="nbf__sr-only">: {{ article.title | escape }}</span></a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+    <nav class="nbf__pagination" aria-label="{{ 'filters.pagination' | t | escape }}" data-pagination hidden>
+      <button class="nbf__button" type="button" data-previous>{{ 'filters.previous' | t }}</button>
+      <span data-page></span>
+      <button class="nbf__button" type="button" data-next>{{ 'filters.next' | t }}</button>
+    </nav>
+    <p class="nbf__fallback" data-blog-link><a href="{{ blog.url | escape }}">{{ 'filters.view_blog' | t }}</a></p>
+    <noscript><p>{{ 'filters.no_script' | t }}</p></noscript>
+  </nested-blog-filters>
+{% elsif request.design_mode %}
+  <p {{ block.shopify_attributes }}>{{ 'filters.choose_blog' | t }}</p>
+{% endif %}
+
+{% schema %}
+{
+  "name": "t:filters.name",
+  "target": "content",
+  "enabled_on": { "templates": ["blog"] },
+  "javascript": "filters.js",
+  "stylesheet": "filters.css",
+  "settings": [
+    {
+      "type": "select",
+      "id": "page_size",
+      "label": "t:filters.page_size",
+      "options": [
+        { "value": "6", "label": "6" },
+        { "value": "12", "label": "12" },
+        { "value": "24", "label": "24" },
+        { "value": "48", "label": "48" }
+      ],
+      "default": "12"
+    },
+    {
+      "type": "text",
+      "id": "proxy_path",
+      "label": "t:filters.proxy_path",
+      "info": "t:filters.proxy_info",
+      "default": "/apps/nested-filters"
+    }
+  ]
+}
+{% endschema %}

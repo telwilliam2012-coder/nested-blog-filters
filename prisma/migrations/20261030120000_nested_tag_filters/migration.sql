@@ -1,0 +1,6 @@
+ALTER TABLE "Filter" ADD COLUMN "source" TEXT NOT NULL DEFAULT 'metafield';
+ALTER TABLE "Filter" ADD COLUMN "parentKey" TEXT;
+ALTER TABLE "Filter" ADD COLUMN "parentValues" TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE "Article" ADD COLUMN "tags" TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE "Article" ADD COLUMN "imageUrl" TEXT;
+ALTER TABLE "Article" ADD COLUMN "imageAlt" TEXT;

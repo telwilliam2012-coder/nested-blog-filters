@@ -1,0 +1,28 @@
+{
+  "filters": {
+    "heading": "Ideas for your kind of celebration",
+    "intro": "Find inspiration for your next party. Choose a theme to discover related ideas.",
+    "eyebrow": "Inspiration for every celebration",
+    "panel_title": "Find your idea",
+    "guide": "Start with a theme, then explore the options that appear. You can choose more than one in each filter.",
+    "choose": "Choose an option",
+    "active": "Selected filters",
+    "remove": "Remove {{ value }}",
+    "empty_title": "Let's try another combination",
+    "loading": "Updating articles and available options…",
+    "error": "We couldn't load the articles. Try again or open the blog.",
+    "empty": "No articles match these filters. Change an option or clear the filters.",
+    "unconfigured": "This blog has no saved filter set yet. Configure it in the app to enable filtering.",
+    "results": "Articles found: {{ count }}",
+    "page": "Page {{ current }} of {{ total }}",
+    "read": "Read article",
+    "clear": "Clear filters",
+    "retry": "Try again",
+    "pagination": "Article pages",
+    "previous": "Previous",
+    "next": "Next",
+    "view_blog": "View the blog",
+    "no_script": "Enable JavaScript to filter articles. You can still read the articles above or open the blog.",
+    "choose_blog": "Open a blog template to preview this block."
+  }
+}

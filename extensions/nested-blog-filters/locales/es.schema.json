@@ -1,0 +1,8 @@
+{
+  "filters": {
+    "name": "Filtros del blog",
+    "page_size": "Artículos por página",
+    "proxy_path": "Ruta del App Proxy",
+    "proxy_info": "Cámbiala solo si personalizaste la URL del App Proxy en Shopify."
+  }
+}
