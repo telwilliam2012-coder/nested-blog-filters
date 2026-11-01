@@ -2,12 +2,15 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import prisma from "../db.server";
 import { AdminInputError, requireRevision } from "./admin-errors.server";
 import { getFilterSet } from "./filter-admin.server";
+import { normalizeTag } from "../filter-hierarchy";
 import {
   fetchArticlePage,
   fetchArticlesByIds,
   metafieldKey,
   METAFIELD_TYPE,
   setArticleMetafields,
+  setArticleTags,
+  type ArticleTagOperation,
   type ArticleSnapshot,
   type ContentAdmin,
 } from "./shopify-content.server";
@@ -240,6 +243,7 @@ export type ArticleEdit = {
   optionIds: string[];
   mode: "append" | "remove" | "replace";
   digests: Record<string, string | null>;
+  expectedValues?: Record<string, string[]>;
 };
 
 export async function editArticleAttributes(
@@ -277,10 +281,6 @@ export async function editArticleAttributes(
       409,
     );
   const filter = set.filters.find((item) => item.id === input.filterId);
-  if (filter?.source === "tag")
-    throw new AdminInputError(
-      "Este filtro usa etiquetas de Shopify. Edita las etiquetas del artículo en Shopify y vuelve a sincronizar.",
-    );
   if (
     !filter ||
     input.optionIds.some(
@@ -308,6 +308,19 @@ export async function editArticleAttributes(
   const values = filter.options
     .filter((option) => input.optionIds.includes(option.id))
     .map((option) => option.value);
+  if (filter.source === "tag") {
+    return editTagAttributes(
+      admin,
+      shop,
+      set,
+      filter,
+      local,
+      snapshots,
+      input,
+      values,
+      db,
+    );
+  }
   const changes = snapshots.map((node, index) => {
     const field = node.attributes[filter.id];
     const expected = input.digests?.[local[index].id];
@@ -341,27 +354,124 @@ export async function editArticleAttributes(
   });
   await setArticleMetafields(admin, changes);
   try {
-    await db.$transaction(
-      async (tx) => {
-        const reserved = await tx.filterSet.updateMany({
-          where: {
-            id: set.id,
-            shop,
-            revision: input.revision,
-            sync: { is: null },
-          },
-          data: { revision: { increment: 1 } },
-        });
-        if (reserved.count !== 1) throw new Error("Configuration changed");
-        for (const node of snapshots) await indexArticle(tx, set, node);
-      },
-      { timeout: 20_000 },
-    );
+    await commitArticleSnapshots(shop, set, input.revision, snapshots, db);
   } catch {
     throw new AdminInputError(
       "Shopify guardó los atributos, pero el índice local no pudo actualizarse. Sincroniza el blog antes de seguir editando.",
       409,
     );
   }
+  return local.length;
+}
+
+async function commitArticleSnapshots(
+  shop: string,
+  set: Configuration,
+  revision: number,
+  snapshots: ArticleSnapshot[],
+  db: PrismaClient,
+) {
+  await db.$transaction(
+    async (tx) => {
+      const reserved = await tx.filterSet.updateMany({
+        where: { id: set.id, shop, revision, sync: { is: null } },
+        data: { revision: { increment: 1 } },
+      });
+      if (reserved.count !== 1) throw new Error("Configuration changed");
+      for (const snapshot of snapshots) await indexArticle(tx, set, snapshot);
+    },
+    { timeout: 20_000 },
+  );
+}
+
+async function editTagAttributes(
+  admin: ContentAdmin,
+  shop: string,
+  set: Configuration,
+  filter: Configuration["filters"][number],
+  local: Array<{ id: string; shopifyArticleId: string }>,
+  snapshots: ArticleSnapshot[],
+  input: ArticleEdit,
+  values: string[],
+  db: PrismaClient,
+) {
+  const configured = new Set(
+    filter.options.map((option) => normalizeTag(option.value)),
+  );
+  const selected = new Set(values.map(normalizeTag));
+  const operations: ArticleTagOperation[] = [];
+  for (const [index, snapshot] of snapshots.entries()) {
+    const expected = input.expectedValues?.[local[index].id];
+    const current = snapshot.attributes[filter.id].values;
+    if (
+      !Array.isArray(expected) ||
+      expected.length > 200 ||
+      expected.some((value) => typeof value !== "string") ||
+      JSON.stringify([...new Set(expected)].sort()) !==
+        JSON.stringify([...new Set(current)].sort())
+    ) {
+      throw new AdminInputError(
+        "Las etiquetas de este filtro cambiaron desde que abriste la página. Recarga los artículos antes de guardar.",
+        409,
+      );
+    }
+    const present = new Set(snapshot.tags.map(normalizeTag));
+    const add =
+      input.mode === "remove"
+        ? []
+        : values.filter((value) => !present.has(normalizeTag(value)));
+    const remove = snapshot.tags.filter(
+      (tag) =>
+        configured.has(normalizeTag(tag)) &&
+        (input.mode === "remove"
+          ? selected.has(normalizeTag(tag))
+          : input.mode === "replace" && !selected.has(normalizeTag(tag))),
+    );
+    const nextCount = new Set([
+      ...current.filter(
+        (value) =>
+          !remove.some((tag) => normalizeTag(tag) === normalizeTag(value)),
+      ),
+      ...add,
+    ]).size;
+    if (nextCount > 128)
+      throw new AdminInputError(
+        "Un artículo no puede tener más de 128 valores en el mismo filtro.",
+      );
+    if (add.length)
+      operations.push({
+        kind: "add",
+        id: snapshot.id,
+        tags: [...new Set(add)],
+      });
+    if (remove.length)
+      operations.push({ kind: "remove", id: snapshot.id, tags: remove });
+  }
+  let incomplete = false;
+  try {
+    await setArticleTags(admin, operations);
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    incomplete = true;
+  }
+  try {
+    const updated = await fetchArticlesByIds(
+      admin,
+      local.map((article) => article.shopifyArticleId),
+      set.blogId,
+      set.filters,
+    );
+    await commitArticleSnapshots(shop, set, input.revision, updated, db);
+  } catch {
+    throw new AdminInputError(
+      "No se pudo confirmar el estado de las etiquetas. Shopify puede haber guardado parte de los cambios. Sincroniza el blog antes de continuar.",
+      409,
+    );
+  }
+  if (incomplete)
+    throw new AdminInputError(
+      "Shopify no pudo completar todos los cambios de etiquetas. El índice local se actualizó con el estado disponible. Revisa los artículos y vuelve a intentarlo.",
+      409,
+    );
   return local.length;
 }

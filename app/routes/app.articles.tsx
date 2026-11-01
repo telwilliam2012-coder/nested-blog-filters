@@ -16,6 +16,10 @@ import {
 } from "../services/article-admin.server";
 import { getFilterSet } from "../services/filter-admin.server";
 import { authenticate } from "../shopify.server";
+export {
+  AdminPageError as ErrorBoundary,
+  adminHeaders as headers,
+} from "../components/admin-page-error";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);
@@ -94,7 +98,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const count = await editArticleAttributes(admin, session.shop, id, input);
       return data({
         error: null,
-        message: `Atributos guardados en ${count} artículos.`,
+        message: `Cambios guardados en ${count} artículos.`,
         progress: null,
       });
     }

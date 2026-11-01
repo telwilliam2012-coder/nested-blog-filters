@@ -1,10 +1,13 @@
 {
   "filters": {
+    "search_label": "Buscar artículos del blog",
+    "search_placeholder": "Buscar artículos…",
+    "search_submit": "Buscar",
     "heading": "Ideas para celebrar a tu manera",
     "intro": "Encuentra inspiración para tu próxima fiesta. Elige un motivo y descubre las opciones relacionadas.",
     "eyebrow": "Inspiración para cada celebración",
     "panel_title": "Encuentra tu idea",
-    "guide": "Empieza por un motivo y sigue las opciones que aparecen. Puedes elegir varias en cada filtro.",
+    "guide": "Empieza por un motivo y sigue las opciones que aparecen. Puedes elegir una sola opción en cada filtro.",
     "choose": "Elige una opción",
     "active": "Filtros seleccionados",
     "remove": "Quitar {{ value }}",
@@ -13,7 +16,7 @@
     "error": "No pudimos cargar los artículos. Inténtalo de nuevo o abre el blog.",
     "empty": "No hay artículos con estos filtros. Cambia una opción o limpia los filtros.",
     "unconfigured": "Este blog todavía no tiene un conjunto de filtros guardado. Configúralo en la app para habilitar los filtros.",
-    "results": "Artículos encontrados: {{ count }}",
+    "results": "Resultados encontrados: {{ count }}",
     "page": "Página {{ current }} de {{ total }}",
     "read": "Leer artículo",
     "clear": "Limpiar filtros",

@@ -3,6 +3,20 @@
   assign proxy_path = block.settings.proxy_path | default: '/apps/nested-filters' | remove_first: '/'
 %}
 
+{% style %}
+  #nested-blog-filters-{{ block.id }} {
+    {% if block.settings.badge_bg_color != blank %}
+      --nbf-badge-bg: {{ block.settings.badge_bg_color }};
+    {% endif %}
+    {% if block.settings.badge_text_color != blank %}
+      --nbf-badge-text: {{ block.settings.badge_text_color }};
+    {% endif %}
+    {% if block.settings.accent_color != blank %}
+      --nbf-accent: {{ block.settings.accent_color }};
+    {% endif %}
+  }
+{% endstyle %}
+
 {% if blog != blank %}
   <nested-blog-filters
     id="nested-blog-filters-{{ block.id }}"
@@ -25,19 +39,24 @@
     data-empty-title="{{ 'filters.empty_title' | t | escape }}"
     {{ block.shopify_attributes }}
   >
-    <header class="nbf__header">
-      <p class="nbf__eyebrow">{{ 'filters.eyebrow' | t }}</p>
-      <h2 class="nbf__heading">{{ 'filters.heading' | t }}</h2>
-      <p>{{ 'filters.intro' | t }}</p>
-    </header>
+    <h2 class="nbf__sr-only">{{ 'filters.heading' | t }}</h2>
+    <div class="nbf__search-bar">
+      <form class="nbf__search" action="{{ routes.search_url }}" method="get" role="search" aria-label="{{ 'filters.search_label' | t | escape }}" data-search-form>
+        <svg class="nbf__search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
+        <input type="hidden" name="type" value="article">
+        <label class="nbf__sr-only" for="nbf-search-{{ block.id }}">{{ 'filters.search_label' | t }}</label>
+        <input id="nbf-search-{{ block.id }}" type="search" name="q" maxlength="200" placeholder="{{ 'filters.search_placeholder' | t | escape }}" data-search-input>
+        <button class="nbf__search-submit" type="submit">
+          {{ 'filters.search_submit' | t }}
+        </button>
+      </form>
+    </div>
     <section class="nbf__toolbar" data-toolbar aria-label="{{ 'filters.panel_title' | t | escape }}" hidden>
-      <div class="nbf__panel-heading">
-        <h3 class="nbf__filter-title">{{ 'filters.panel_title' | t }}</h3>
+      <div class="nbf__filter-row">
+        <div class="nbf__filters" data-filters></div>
         <button class="nbf__clear" type="button" data-clear disabled>{{ 'filters.clear' | t }}</button>
       </div>
-      <div class="nbf__filters" data-filters></div>
       <div class="nbf__active" data-active aria-label="{{ 'filters.active' | t | escape }}" hidden></div>
-      <p class="nbf__guide">{{ 'filters.guide' | t }}</p>
     </section>
     <p class="nbf__status" data-status role="status" aria-live="polite" aria-atomic="true"></p>
     <button class="nbf__button" type="button" data-retry hidden>{{ 'filters.retry' | t }}</button>
@@ -88,6 +107,24 @@
         { "value": "48", "label": "48" }
       ],
       "default": "12"
+    },
+    {
+      "type": "color",
+      "id": "badge_bg_color",
+      "label": "t:filters.badge_bg_color",
+      "default": "#0e5a44"
+    },
+    {
+      "type": "color",
+      "id": "badge_text_color",
+      "label": "t:filters.badge_text_color",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "t:filters.accent_color",
+      "default": "#245c4c"
     },
     {
       "type": "text",

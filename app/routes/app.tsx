@@ -4,26 +4,33 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { authenticate } from "../shopify.server";
+import { AdminI18nProvider } from "../i18n/admin-i18n";
+import { AdminNavigation } from "../components/admin-navigation";
+import { requestAdminLocale } from "../i18n/locale";
+import { AdminSupportProvider } from "../components/admin-support";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
 
   // eslint-disable-next-line no-undef
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+  return {
+    apiKey: process.env.SHOPIFY_API_KEY || "",
+    shop: session.shop,
+    locale: requestAdminLocale(request),
+  };
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData<typeof loader>();
+  const { apiKey, shop, locale } = useLoaderData<typeof loader>();
 
   return (
     <AppProvider apiKey={apiKey}>
-      <s-app-nav>
-        <s-link href="/app">Inicio</s-link>
-        <s-link href="/app/blogs">Blogs</s-link>
-        <s-link href="/app/filters">Filtros</s-link>
-        <s-link href="/app/articles">Artículos</s-link>
-      </s-app-nav>
-      <Outlet />
+      <AdminI18nProvider key={shop} shop={shop} initialLocale={locale}>
+        <AdminSupportProvider shop={shop}>
+          <AdminNavigation />
+          <Outlet />
+        </AdminSupportProvider>
+      </AdminI18nProvider>
     </AppProvider>
   );
 }

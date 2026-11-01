@@ -51,7 +51,7 @@ de blogs existente sigue leyendo directamente la Admin API.
 
 El inicio también muestra los totales de conjuntos, filtros, opciones y artículos
 guardados de la tienda autenticada. Si existen conjuntos, permite consultar una
-vista previa con selección múltiple, conteos en cascada, limpieza de filtros y
+vista previa con selección única por filtro, conteos en cascada, limpieza de filtros y
 paginación. La ruta privada `/app/filter-preview` consulta el motor sin volver a
 solicitar el resumen de blogs a Shopify. Esta vista no crea configuraciones ni
 publica cambios en la tienda; muestra un estado vacío cuando no hay datos.
@@ -62,7 +62,7 @@ y [consultas con filtros](https://www.prisma.io/docs/orm/v6/prisma-client/querie
 ## Nested Blog Filters — Fase 3
 
 La extensión `extensions/nested-blog-filters/` contiene un App Block para
-plantillas de blog, con desplegables de selección múltiple, conteos en cascada,
+plantillas de blog, con desplegables de selección única por filtro, conteos en cascada,
 limpieza de filtros y una cuadrícula paginada de artículos. Sus textos están
 traducidos al español y al inglés. No requiere bibliotecas de frontend.
 
@@ -86,7 +86,7 @@ Tienda: /apps/nested-filters
 ```
 
 El bloque envía `blogId` como GID completo, `page`, `pageSize` y parámetros
-repetidos `option.<filterId>=<optionId>`. El servidor obtiene la tienda de la
+`option.<filterId>=<optionId>`, con un único valor por filtro. El servidor obtiene la tienda de la
 sesión autenticada, no de un identificador proporcionado por el visitante.
 Solo devuelve etiquetas, conteos, artículos publicados y paginación. Los errores
 no exponen detalles internos y las respuestas desactivan el almacenamiento en caché.
@@ -112,8 +112,11 @@ de la extensión, que no debe editarse directamente. Vite también lo regenera a
 iniciar, compilar o modificar la fuente en desarrollo, y `npm test` lo prepara
 antes de ejecutar las pruebas.
 
-La interfaz muestra los valores elegidos en cada selector, selecciones que se
-pueden quitar individualmente y un solo desplegable abierto a la vez. Los menús
+La cabecera muestra un buscador y una fila compacta de filtros. La búsqueda por
+título o identificador de URL se aplica a todos los artículos publicados del
+índice del blog, se combina con los filtros y conserva la paginación y los conteos.
+Sin JavaScript se usa la búsqueda estándar de Shopify restringida a artículos.
+Las selecciones pueden quitarse individualmente y solo hay un desplegable abierto a la vez. Los menús
 se cierran al pulsar fuera o usar Escape. En móvil se abren dentro del flujo para
 evitar que tapen los demás controles. Los textos siguen el idioma de la tienda.
 
@@ -145,6 +148,125 @@ sincronización de desarrollo y añadir el bloque en el editor.
 
 Referencias: [configuración de Theme App Extensions](https://shopify.dev/docs/apps/build/online-store/theme-app-extensions/configuration)
 y [App Proxies](https://shopify.dev/docs/apps/build/online-store/app-proxies).
+
+## Interfaz del bloque de tienda
+
+El bloque usa CSS nativo encapsulado bajo `nested-blog-filters.nbf` y clases
+`nbf__`, sin Tailwind ni Polaris en la tienda. Los botones muestran el nivel,
+la categoría, el valor elegido y un badge de selección. Los menús incluyen
+el contexto del filtro padre. Los indicadores visuales son pseudoelementos CSS;
+los controles mantienen radios nativos para permitir una sola opción por filtro
+y navegación con las flechas del teclado.
+
+Las aperturas y cierres duran 300 ms, con opacidad y un desplazamiento de 4 px
+definido por `--nbf-menu-offset`. Las etiquetas se eliminan con una
+transición de opacidad y escala. Se respeta `prefers-reduced-motion`. En móvil
+los menús se abren dentro del flujo y las etiquetas comparten una fila compacta
+con la acción de limpiar. Las propiedades lógicas permiten texto RTL.
+
+Los colores se personalizan por bloque desde **Tienda online → Temas → Personalizar**,
+en la plantilla de blog, seleccionando **Filtros del blog**. Los controles
+**Color de fondo del Badge** (`#0e5a44`), **Color de texto del Badge** (`#ffffff`)
+y **Color de acento general** (`#245c4c`) actualizan los indicadores numéricos
+activos, las selecciones y los estados de los botones. Las variables
+`--nbf-badge-bg`, `--nbf-badge-text` y `--nbf-accent` quedan
+limitadas al ID del bloque; las variables de uso `--nbf-color-badge-bg`,
+`--nbf-color-badge-text` y `--nbf-color-accent` las consumen mediante `var()` con respaldo,
+sin autorreferencias. Varios bloques pueden usar colores diferentes. Si se borra un color,
+se utiliza su valor predeterminado. El bloque usa `{% style %}` para la vista
+previa de colores del editor, sin JavaScript adicional. Se conservan los bordes
+de 12 px de los desplegables y sus sombras, que toman el color de acento.
+
+Los tiempos se ajustan mediante las variables `--nbf-*` al inicio
+de `extensions/nested-blog-filters/assets/filters.css`. El JavaScript legible
+permanece en `app/storefront/filters.js`; ejecutar `npm run build:storefront`
+regenera el recurso de la extensión y comprueba que no supere 10 KB.
+
+La prueba de Chromium comprueba selección única, teclado, foco, cierre con
+Escape y clic exterior, animaciones, pantallas de 320 px, RTL, nombres largos
+y estilos genéricos de un tema externo. `NBF_SCREENSHOT_DIR` permite guardar
+capturas reales de escritorio y móvil.
+
+## Idiomas de la tienda y del panel
+
+La interfaz admite español (`es`), inglés (`en`), alemán (`de`), italiano (`it`)
+y francés (`fr`). Los diccionarios completos se guardan en tres grupos:
+
+| Superficie | Archivos | Selección del idioma |
+| --- | --- | --- |
+| Tienda | `extensions/nested-blog-filters/locales/{es,en.default,de,it,fr}.json` | Idioma activo de Shopify para el visitante. |
+| Editor de temas | `extensions/nested-blog-filters/locales/{es,en.default,de,it,fr}.schema.json` | Idioma del administrador en Shopify. |
+| Panel de la app | `app/locales/{es,en,de,it,fr}.json` | Selector **Idioma de la aplicación** en Inicio. |
+
+Shopify resuelve los textos de Liquid mediante `t` y el idioma de la solicitud.
+El bloque transmite esos mismos textos al JavaScript mediante atributos `data-*`;
+los conteos y fechas usan `data-locale`. Para ofrecer los idiomas en la tienda,
+el comerciante debe añadirlos y publicarlos en la configuración de idiomas de
+Shopify. Los controles `badge_bg_color`, `badge_text_color` y `accent_color`
+se traducen mediante los archivos `.schema.json`, no mediante los de la tienda.
+
+`AdminI18nProvider`, montado en `/app`, comparte el idioma con Inicio, Blogs,
+la navegación, el constructor de filtros y la gestión de Artículos. El idioma
+inicial procede del parámetro `locale` de Shopify o de `Accept-Language`;
+los idiomas regionales se reducen a su idioma base y el respaldo es español.
+Después de hidratar se recupera la elección del navegador, guardada por tienda
+en `nbf.admin.locale:<shop>`. La elección persiste al navegar y recargar y se
+sincroniza entre pestañas. Si el navegador bloquea el almacenamiento, la
+selección sigue funcionando durante la sesión de la app. No cambia el idioma
+del escaparate ni las preferencias generales de Shopify.
+
+Los componentes usan `useAdminI18n()` para obtener `locale`, `setLocale`, `t` y
+`formatNumber`. Las claves del Admin usan los mensajes de origen, principalmente en español, y las
+interpolaciones usan `{{v0}}`, `{{v1}}`, etc. Los avisos existentes del servidor
+se traducen al mostrarlos, incluidos los motivos de validación y los conteos.
+Los nombres, títulos, etiquetas y valores del comerciante se conservan;
+este sistema traduce la interfaz, no el contenido de los blogs. Los mensajes
+externos desconocidos conservan el texto proporcionado por Shopify.
+
+Las pruebas comprueban la paridad de claves e interpolaciones, el renderizado
+de las pantallas en cinco idiomas, la negociación inicial y, en Chromium, el
+selector, la navegación, los borradores y las preferencias de cada tienda.
+Las pruebas de navegador usan componentes de la app con elementos de prueba
+para los eventos Polaris; no requieren una sesión ni escrituras en Shopify.
+
+Referencia: [locales de Shopify](https://shopify.dev/docs/storefronts/themes/architecture/locales).
+
+## Ayuda y soporte de Dreamers APP
+
+El menú **Ayuda** abre `/app/help`, con la guía de inicio, la configuración de
+etiquetas, seis preguntas desplegables y el contacto de Dreamers APP. Inicio
+también ofrece un acceso a la documentación y otro a la ayuda rápida.
+
+Un asistente fijo aparece en la esquina inferior derecha de todas las pantallas
+del Admin. Su panel lateral muestra los tres pasos de inicio, la documentación
+completa y un formulario de contacto, sin navegar fuera de la configuración.
+El formulario conserva su borrador al cerrar el panel o consultar la guía.
+El diálogo nativo gestiona el foco y Escape, usa controles y tarjetas oficiales
+de Polaris Web Components y respeta la preferencia de movimiento reducido.
+Esta versión de Polaris no expone una posición lateral para `s-modal`.
+
+El correo oficial se centraliza en `app/support/contact.ts`:
+`telwilliam2012@gmail.com`. El formulario valida el asunto, el mensaje y el correo
+opcional de respuesta, y prepara un enlace `mailto:` con el dominio de la tienda,
+el idioma y la ruta actual. No añade parámetros de URL. Abre un borrador en el
+cliente de correo del comerciante; el comerciante lo revisa y envía desde allí.
+Si el navegador no abre ese cliente, se ofrece un enlace al borrador preparado.
+No hay envío desde el servidor, almacenamiento de consultas ni servicio SMTP.
+
+La ayuda está traducida a los cinco idiomas mediante `useAdminI18n()`. Sus textos
+documentan la lógica actual: las etiquetas se comparan con valores completos y
+el árbol se configura mediante las relaciones del constructor. Una etiqueta como
+`Categoría_Subcategoría` no genera niveles automáticamente. El ejemplo de
+Celebraciones prepara una jerarquía explícita; no cambia esta regla.
+
+Componentes principales: `help-content.tsx`, `admin-support.tsx` y
+`support-contact-form.tsx`. `AdminSupportProvider` se monta una sola vez dentro
+del contexto global de idioma en `app/routes/app.tsx`. Las pruebas verifican las
+FAQs en cinco idiomas, la validación y codificación del correo, el panel móvil,
+Escape y la conservación de los borradores. Las pruebas simulan la apertura
+del cliente de correo y no envían mensajes reales. `npm test` ejecuta los archivos
+en serie para evitar que los navegadores de prueba compitan por recursos y
+bloqueen sus perfiles temporales en Windows.
 
 ## Nested Blog Filters — Fase 4
 
@@ -234,11 +356,29 @@ y [Polaris para App Home](https://shopify.dev/docs/api/app-home/v2.0/web-compone
 ## Filtros anidados y etiquetas de Shopify
 
 Cada filtro puede usar **atributos gestionados en la app** o las **etiquetas del
-artículo en Shopify**. Las etiquetas se importan al sincronizar; no se modifican
-en Shopify. El valor de una opción debe coincidir con la etiqueta, sin distinguir
+artículo en Shopify**. Las etiquetas se importan al sincronizar y se pueden editar
+desde **Artículos**. El valor de una opción debe coincidir con la etiqueta, sin distinguir
 mayúsculas ni espacios al principio o al final. Solo se usan las etiquetas que
 figuran como opciones del filtro, por lo que otras etiquetas no se mezclan entre
 niveles.
+
+En **Artículos**, selecciona hasta 25 artículos, el filtro y la operación
+**añadir**, **quitar** o **reemplazar**. El botón **Guardar etiquetas en Shopify**
+modifica únicamente las etiquetas que corresponden a las opciones del filtro.
+Reemplazar sin elegir opciones vacía ese filtro; las etiquetas ajenas se conservan.
+La app vuelve a leer Shopify y actualiza el índice local al terminar, sin exigir
+otra sincronización manual.
+
+Antes de escribir se comprueba que las opciones del filtro no hayan cambiado
+desde que se abrió la pantalla. Las escrituras usan `tagsAdd` y `tagsRemove`,
+de modo que no sustituyen la lista completa de etiquetas ni borran etiquetas
+ajenas añadidas por otra sesión. Estas operaciones no ofrecen el CAS de los
+metafields ni una transacción entre artículos. Si Shopify rechaza parte del lote,
+la app lo indica y reconcilia el índice con el estado disponible; si no puede
+confirmarlo, solicita sincronizar el blog antes de continuar.
+
+Referencias: [añadir etiquetas](https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/tagsAdd)
+y [quitar etiquetas](https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/tagsRemove).
 
 En el editor, **Mostrar este filtro después de** permite elegir un filtro
 anterior y las opciones que activan el siguiente nivel. Las condiciones se

@@ -325,3 +325,52 @@ export async function setArticleMetafields(
     );
   }
 }
+
+export type ArticleTagOperation = {
+  kind: "add" | "remove";
+  id: string;
+  tags: string[];
+};
+
+export function articleTagsMutation(operations: ArticleTagOperation[]) {
+  const argumentsList = operations
+    .map((_, index) => `$id_${index}: ID!, $tags_${index}: [String!]!`)
+    .join(", ");
+  const fields = operations
+    .map(
+      (operation, index) =>
+        `change_${index}: ${operation.kind === "add" ? "tagsAdd" : "tagsRemove"}(id: $id_${index}, tags: $tags_${index}) { node { id } userErrors { message } }`,
+    )
+    .join("\n");
+  return `mutation FilterArticleTags(${argumentsList}) { ${fields} }`;
+}
+
+export async function setArticleTags(
+  admin: ContentAdmin,
+  operations: ArticleTagOperation[],
+) {
+  if (!operations.length) return;
+  if (operations.length > 50)
+    throw new AdminInputError("Selecciona hasta 25 artículos por lote.");
+  const variables = Object.fromEntries(
+    operations.flatMap((operation, index) => [
+      [`id_${index}`, operation.id],
+      [`tags_${index}`, operation.tags],
+    ]),
+  );
+  const result = await contentData<
+    Record<string, { node: { id: string } | null; userErrors: UserError[] }>
+  >(admin, articleTagsMutation(operations), variables);
+  if (
+    operations.some(
+      (operation, index) =>
+        result[`change_${index}`]?.node?.id !== operation.id ||
+        result[`change_${index}`]?.userErrors.length,
+    )
+  ) {
+    throw new AdminInputError(
+      "Shopify no pudo completar todos los cambios de etiquetas. Revisa los artículos antes de volver a guardar.",
+      409,
+    );
+  }
+}

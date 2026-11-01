@@ -29,6 +29,9 @@ let failPage = false,
   writeCount = 0;
 const writes = [];
 let digestNumber = 0;
+const tagWrites = [];
+let failTagOperation = null;
+let beforeTagWrite;
 
 function field(values) {
   return { type, jsonValue: values, compareDigest: `digest-${++digestNumber}` };
@@ -101,7 +104,33 @@ const admin = {
           remote.has(id) ? rawNode(remote.get(id), query) : null,
         ),
       };
-    else if (query.includes("mutation FilterArticleAttributes")) {
+    else if (query.includes("mutation FilterArticleTags")) {
+      await beforeTagWrite?.();
+      beforeTagWrite = undefined;
+      data = {};
+      for (const match of query.matchAll(
+        /change_(\d+): (tagsAdd|tagsRemove)\(id: \$id_(\d+), tags: \$tags_(\d+)\)/g,
+      )) {
+        const index = Number(match[1]);
+        const id = variables[`id_${match[3]}`];
+        const tags = variables[`tags_${match[4]}`];
+        const node = remote.get(id);
+        tagWrites.push({ kind: match[2], id, tags });
+        if (!node || index === failTagOperation) {
+          data[`change_${index}`] = {
+            node: null,
+            userErrors: [{ message: "Could not update tags" }],
+          };
+          continue;
+        }
+        node.tags =
+          match[2] === "tagsAdd"
+            ? [...new Set([...(node.tags ?? []), ...tags])]
+            : (node.tags ?? []).filter((tag) => !tags.includes(tag));
+        data[`change_${index}`] = { node: { id }, userErrors: [] };
+      }
+      failTagOperation = null;
+    } else if (query.includes("mutation FilterArticleAttributes")) {
       writeCount++;
       writes.push(variables.metafields);
       await beforeWrite?.();
@@ -740,6 +769,22 @@ test("tag filters follow Motivo → Ocasión → Festividad and ignore stale hid
     "gid://shopify/Article/1003",
   );
   assert.equal(christmas.articles[0].imageAlt, "Fiesta de Navidad");
+  const searchMismatch = await engine.getFilteredArticles(
+    {
+      shop: tagShop,
+      filterSetId: id,
+      selections: christmas.selections,
+      query: "Historia 04",
+    },
+    db,
+  );
+  assert.equal(searchMismatch.total, 0);
+  assert.deepEqual(searchMismatch.selections, christmas.selections);
+  assert.equal(
+    searchMismatch.filters[2].options.find((item) => item.value === "Navidad")
+      .selected,
+    true,
+  );
   assert.equal(
     christmas.filters[0].options.find((item) => item.value === "Decoraciones")
       .count,
@@ -780,7 +825,7 @@ test("tag filters follow Motivo → Ocasión → Festividad and ignore stale hid
       },
       db,
     ),
-    /etiquetas de Shopify/,
+    /Recarga los artículos/,
   );
 
   const changed = draft(set);
@@ -871,6 +916,249 @@ test("the celebration preset reuses assigned holiday options and adds their ance
   );
   assert.equal(response.total, 1);
   assert.equal(writeCount, writesBefore);
+});
+
+let tagFixtureNumber = 0;
+async function tagEditFixture(count = 2) {
+  const { celebrationFilters } = await vite.ssrLoadModule(
+    "/app/filter-presets.ts",
+  );
+  const fixture = ++tagFixtureNumber;
+  const tagShop = `editable-tags-${fixture}.myshopify.com`;
+  const ids = Array.from(
+    { length: count },
+    (_, index) => `gid://shopify/Article/${9000 + fixture * 10 + index}`,
+  );
+  for (const [index, id] of ids.entries())
+    remote.set(id, {
+      id,
+      title: `A edición ${fixture}-${index}`,
+      handle: `edicion-${fixture}-${index}`,
+      blog: { id: blogId },
+      isPublished: true,
+      publishedAt: "2020-01-01T00:00:00.000Z",
+      tags: [
+        "Celebraciones",
+        "Festividades",
+        index % 2 ? "navidad" : "Navidad",
+        "Etiqueta ajena",
+      ],
+      fields: { nbf_otro: field(["No modificar"]) },
+    });
+  const id = await filters.saveFilterSet(
+    admin,
+    tagShop,
+    null,
+    {
+      name: "Etiquetas editables",
+      blogId,
+      revision: 0,
+      filters: celebrationFilters(),
+    },
+    db,
+  );
+  let progress = await articles.syncArticlePage(
+    admin,
+    tagShop,
+    id,
+    0,
+    null,
+    db,
+  );
+  while (!progress.complete)
+    progress = await articles.syncArticlePage(
+      admin,
+      tagShop,
+      id,
+      0,
+      progress.id,
+      db,
+    );
+  const input = async (mode, values) => {
+    const page = await articles.getArticleManagementPage(
+      admin,
+      tagShop,
+      id,
+      1,
+      db,
+    );
+    const rows = page.articles.filter((article) =>
+      ids.some((remoteId) => remote.get(remoteId).handle === article.handle),
+    );
+    assert.equal(rows.length, count);
+    const filter = page.set.filters.find((item) => item.key === "festividad");
+    return {
+      revision: page.set.revision,
+      filterId: filter.id,
+      articleIds: rows.map((article) => article.id),
+      mode,
+      optionIds: filter.options
+        .filter((option) => values.includes(option.value))
+        .map((option) => option.id),
+      digests: {},
+      expectedValues: Object.fromEntries(
+        rows.map((article) => [
+          article.id,
+          article.attributes[filter.id].values,
+        ]),
+      ),
+    };
+  };
+  const save = async (mode, values) =>
+    articles.editArticleAttributes(
+      admin,
+      tagShop,
+      id,
+      await input(mode, values),
+      db,
+    );
+  const indexed = () =>
+    db.article.findMany({
+      where: { filterSetId: id, shopifyArticleId: { in: ids } },
+      include: {
+        options: { include: { option: { include: { filter: true } } } },
+      },
+    });
+  return { shop: tagShop, id, ids, input, save, indexed };
+}
+
+test("bulk tag editing adds options to three articles and immediately updates the local index", async () => {
+  const fixture = await tagEditFixture(3);
+  const before = tagWrites.length;
+  const metadataWrites = writeCount;
+  assert.equal(await fixture.save("append", ["Halloween"]), 3);
+  assert.equal(tagWrites.length - before, 3);
+  for (const id of fixture.ids) {
+    assert.ok(remote.get(id).tags.includes("Halloween"));
+    assert.ok(remote.get(id).tags.includes("Etiqueta ajena"));
+    assert.deepEqual(remote.get(id).fields.nbf_otro.jsonValue, [
+      "No modificar",
+    ]);
+  }
+  for (const article of await fixture.indexed()) {
+    assert.ok(JSON.parse(article.tags).includes("Halloween"));
+    assert.deepEqual(
+      article.options
+        .filter((link) => link.option.filter.key === "festividad")
+        .map((link) => link.option.value)
+        .sort(),
+      ["Halloween", "Navidad"],
+    );
+  }
+  assert.equal(writeCount, metadataWrites);
+  const writesAfter = tagWrites.length;
+  await fixture.save("append", ["Halloween"]);
+  assert.equal(tagWrites.length, writesAfter);
+});
+
+test("tag remove uses the stored tag spelling and preserves other filter values", async () => {
+  const fixture = await tagEditFixture();
+  const before = tagWrites.length;
+  await fixture.save("remove", ["Navidad"]);
+  assert.deepEqual(
+    tagWrites
+      .slice(before)
+      .map((operation) => operation.tags[0])
+      .sort(),
+    ["Navidad", "navidad"],
+  );
+  for (const id of fixture.ids)
+    assert.deepEqual(remote.get(id).tags, [
+      "Celebraciones",
+      "Festividades",
+      "Etiqueta ajena",
+    ]);
+  for (const article of await fixture.indexed())
+    assert.equal(
+      article.options.filter((link) => link.option.filter.key === "festividad")
+        .length,
+      0,
+    );
+});
+
+test("tag replace and replace-empty affect only the selected filter", async () => {
+  const fixture = await tagEditFixture();
+  await fixture.save("replace", ["Amor y Amistad"]);
+  for (const id of fixture.ids)
+    assert.deepEqual(remote.get(id).tags, [
+      "Celebraciones",
+      "Festividades",
+      "Etiqueta ajena",
+      "Amor y Amistad",
+    ]);
+  await fixture.save("replace", []);
+  for (const id of fixture.ids)
+    assert.deepEqual(remote.get(id).tags, [
+      "Celebraciones",
+      "Festividades",
+      "Etiqueta ajena",
+    ]);
+});
+
+test("stale tag selections are rejected before any mutation", async () => {
+  const fixture = await tagEditFixture();
+  const input = await fixture.input("append", ["Amor y Amistad"]);
+  remote.get(fixture.ids[0]).tags.push("Halloween");
+  const before = tagWrites.length;
+  await assert.rejects(
+    articles.editArticleAttributes(admin, fixture.shop, fixture.id, input, db),
+    (error) => error.status === 409 && error.message.includes("Recarga"),
+  );
+  assert.equal(tagWrites.length, before);
+});
+
+test("tag mutations preserve unrelated tags added concurrently", async () => {
+  const fixture = await tagEditFixture(1);
+  beforeTagWrite = async () => {
+    remote.get(fixture.ids[0]).tags.push("Nueva etiqueta externa");
+  };
+  await fixture.save("replace", ["Halloween"]);
+  assert.ok(remote.get(fixture.ids[0]).tags.includes("Nueva etiqueta externa"));
+  assert.ok(
+    JSON.parse((await fixture.indexed())[0].tags).includes(
+      "Nueva etiqueta externa",
+    ),
+  );
+});
+
+test("partial tag errors reconcile the index, report partial completion and allow retry", async () => {
+  const fixture = await tagEditFixture(1);
+  failTagOperation = 1;
+  await assert.rejects(
+    fixture.save("replace", ["Halloween"]),
+    /todos los cambios/,
+  );
+  assert.ok(remote.get(fixture.ids[0]).tags.includes("Navidad"));
+  assert.ok(remote.get(fixture.ids[0]).tags.includes("Halloween"));
+  const indexed = (await fixture.indexed())[0];
+  assert.deepEqual(
+    indexed.options
+      .filter((link) => link.option.filter.key === "festividad")
+      .map((link) => link.option.value)
+      .sort(),
+    ["Halloween", "Navidad"],
+  );
+  await fixture.save("replace", ["Halloween"]);
+  assert.equal(remote.get(fixture.ids[0]).tags.includes("Navidad"), false);
+});
+
+test("tag updates with a failed local commit tell the merchant to synchronize", async () => {
+  const fixture = await tagEditFixture(1);
+  beforeTagWrite = async () => {
+    await db.filterSet.update({
+      where: { id: fixture.id },
+      data: { revision: { increment: 1 } },
+    });
+  };
+  await assert.rejects(
+    fixture.save("replace", ["Halloween"]),
+    /Sincroniza el blog/,
+  );
+  assert.ok(remote.get(fixture.ids[0]).tags.includes("Halloween"));
+  assert.equal(
+    JSON.parse((await fixture.indexed())[0].tags).includes("Halloween"),
+    false,
+  );
 });
 
 test("hierarchy validation rejects cycles, missing parents and unknown parent options", async () => {

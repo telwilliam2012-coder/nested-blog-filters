@@ -18,6 +18,10 @@ import { actionError, loaderError } from "../services/admin-errors.server";
 import { getFilterSet, saveFilterSet } from "../services/filter-admin.server";
 import { requireShopifyBlog } from "../services/shopify-content.server";
 import { authenticate } from "../shopify.server";
+export {
+  AdminPageError as ErrorBoundary,
+  adminHeaders as headers,
+} from "../components/admin-page-error";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);

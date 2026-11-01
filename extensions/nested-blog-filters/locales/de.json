@@ -1,0 +1,31 @@
+{
+  "filters": {
+    "search_label": "Blogartikel suchen",
+    "search_placeholder": "Artikel suchen…",
+    "search_submit": "Suchen",
+    "heading": "Ideen für deine Feier",
+    "intro": "Finde Inspiration für deine nächste Feier. Wähle ein Motiv und entdecke passende Ideen.",
+    "eyebrow": "Inspiration für jede Feier",
+    "panel_title": "Finde deine Idee",
+    "guide": "Beginne mit einem Motiv und entdecke die weiteren Optionen. Pro Filter kannst du eine Option auswählen.",
+    "choose": "Option auswählen",
+    "active": "Ausgewählte Filter",
+    "remove": "{{ value }} entfernen",
+    "empty_title": "Versuche eine andere Kombination",
+    "loading": "Artikel und verfügbare Optionen werden aktualisiert…",
+    "error": "Die Artikel konnten nicht geladen werden. Versuche es erneut oder öffne den Blog.",
+    "empty": "Keine Artikel für diese Filter gefunden. Ändere eine Option oder setze die Filter zurück.",
+    "unconfigured": "Für diesen Blog ist noch kein Filterset gespeichert. Richte es in der App ein, um die Filter zu aktivieren.",
+    "results": "Gefundene Ergebnisse: {{ count }}",
+    "page": "Seite {{ current }} von {{ total }}",
+    "read": "Artikel lesen",
+    "clear": "Filter zurücksetzen",
+    "retry": "Erneut versuchen",
+    "pagination": "Artikelseiten",
+    "previous": "Zurück",
+    "next": "Weiter",
+    "view_blog": "Blog ansehen",
+    "no_script": "Aktiviere JavaScript, um Artikel zu filtern. Du kannst die Artikel oben lesen oder den Blog öffnen.",
+    "choose_blog": "Öffne eine Blogvorlage, um diesen Block in der Vorschau anzuzeigen."
+  }
+}

@@ -13,13 +13,17 @@ export type FilterEngineInput = {
   selections?: FilterSelections;
   page?: number;
   pageSize?: number;
+  query?: string;
 };
 
 export class FilterEngineError extends Error {
   constructor(
     message: string,
     public readonly code:
-      "FILTER_SET_NOT_FOUND" | "INVALID_SELECTION" | "INVALID_PAGINATION",
+      | "FILTER_SET_NOT_FOUND"
+      | "INVALID_SELECTION"
+      | "INVALID_PAGINATION"
+      | "INVALID_SEARCH",
   ) {
     super(message);
     this.name = "FilterEngineError";
@@ -33,11 +37,17 @@ function articleWhere(
   selections: Selection[],
   now: Date,
   excludedFilterId?: string,
+  query = "",
 ): Prisma.ArticleWhereInput {
   return {
     filterSetId,
     // Drafts and scheduled articles must not contribute to results or counts.
     publishedAt: { lte: now },
+    ...(query
+      ? {
+          OR: [{ title: { contains: query } }, { handle: { contains: query } }],
+        }
+      : {}),
     AND: selections
       .filter(([filterId]) => filterId !== excludedFilterId)
       .map(([, optionIds]) => ({
@@ -58,10 +68,22 @@ export async function getFilteredArticles(
     selections = {},
     page = 1,
     pageSize = 24,
+    query = "",
   }: FilterEngineInput,
   db: PrismaClient = prisma,
 ) {
   const skip = (page - 1) * pageSize;
+  if (
+    typeof query !== "string" ||
+    query.trim().length > 200 ||
+    [...query].some((character) => character.charCodeAt(0) < 32)
+  ) {
+    throw new FilterEngineError(
+      "La búsqueda debe contener como máximo 200 caracteres.",
+      "INVALID_SEARCH",
+    );
+  }
+  query = query.trim();
 
   if (
     !Number.isSafeInteger(page) ||
@@ -190,6 +212,7 @@ export async function getFilteredArticles(
               normalized.filter(([id]) => !descendants.has(id)),
               now,
               filter.id,
+              query,
             ),
           },
           _count: { _all: true },
@@ -199,9 +222,26 @@ export async function getFilteredArticles(
         );
         const selection = normalized.find(([id]) => id === filter.id);
         if (filter.parentKey && selection) {
-          selection[1] = selection[1].filter(
-            (id) => (countsById.get(id) ?? 0) > 0,
+          const validCounts = query
+            ? await tx.articleOption.groupBy({
+                by: ["filterOptionId"],
+                where: {
+                  filterSetId,
+                  filterOptionId: { in: selection[1] },
+                  option: { filterId: filter.id },
+                  article: articleWhere(
+                    filterSetId,
+                    normalized.filter(([id]) => !descendants.has(id)),
+                    now,
+                    filter.id,
+                  ),
+                },
+              })
+            : counts;
+          const validIds = new Set(
+            validCounts.map((count) => count.filterOptionId),
           );
+          selection[1] = selection[1].filter((id) => validIds.has(id));
           if (!selection[1].length) removeSelection(filter.id);
         }
         const selectedIds = new Set(
@@ -232,7 +272,13 @@ export async function getFilteredArticles(
         });
       }
 
-      const where = articleWhere(filterSetId, normalized, now);
+      const where = articleWhere(
+        filterSetId,
+        normalized,
+        now,
+        undefined,
+        query,
+      );
       const total = await tx.article.count({ where });
       const articles = await tx.article.findMany({
         where,

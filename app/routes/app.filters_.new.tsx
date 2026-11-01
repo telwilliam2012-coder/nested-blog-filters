@@ -19,6 +19,11 @@ import {
   requireShopifyBlog,
 } from "../services/shopify-content.server";
 import { authenticate } from "../shopify.server";
+import { useAdminI18n } from "../i18n/admin-i18n";
+export {
+  AdminPageError as ErrorBoundary,
+  adminHeaders as headers,
+} from "../components/admin-page-error";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const { admin } = await authenticate.admin(request);
@@ -68,6 +73,7 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function NewFiltersPage() {
+  const { t } = useAdminI18n();
   const result = useLoaderData<typeof loader>();
   const error = useActionData<typeof action>();
   const navigation = useNavigation();
@@ -78,10 +84,10 @@ export default function NewFiltersPage() {
         key={result.selected}
         blogs={result.nodes}
         initial={{
-          name: "Filtros del blog",
+          name: t("Filtros del blog"),
           blogId: result.selected,
           revision: 0,
-          filters: [{ key: "motivo", label: "Motivo", options: [] }],
+          filters: [{ key: "motivo", label: t("Motivo"), options: [] }],
         }}
         saving={navigation.state !== "idle"}
         error={error?.error}
@@ -94,7 +100,7 @@ export default function NewFiltersPage() {
           <s-link
             href={`/app/filters/new?after=${encodeURIComponent(result.pageInfo.endCursor ?? "")}`}
           >
-            Consultar más blogs
+            {t("Consultar más blogs")}
           </s-link>
         </s-page>
       )}

@@ -6,6 +6,11 @@ import { TitleBar } from "@shopify/app-bridge-react";
 
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { useAdminI18n } from "../i18n/admin-i18n";
+export {
+  AdminPageError as ErrorBoundary,
+  adminHeaders as headers,
+} from "../components/admin-page-error";
 
 type ShopifyBlog = {
   id: string;
@@ -81,19 +86,22 @@ export async function loader({ request }: LoaderFunctionArgs) {
 // ----------------------------------
 
 export default function BlogsPage() {
+  const { t } = useAdminI18n();
   const { blogs, hasMore, sets } = useLoaderData<typeof loader>();
 
   return (
     <s-page>
-      <TitleBar title="Blogs de Shopify" />
+      <TitleBar title={t("Blogs de Shopify")} />
 
-      <s-section heading="Blogs disponibles">
+      <s-section heading={t("Blogs disponibles")}>
         <s-paragraph>
-          Se encontraron {blogs.length} blogs en esta consulta.
+          {t("Se encontraron {{v0}} blogs en esta consulta.", {
+            v0: blogs.length,
+          })}
         </s-paragraph>
 
         {blogs.length === 0 ? (
-          <s-paragraph>No hay blogs disponibles.</s-paragraph>
+          <s-paragraph>{t("No hay blogs disponibles.")}</s-paragraph>
         ) : (
           <s-unordered-list>
             {blogs.map((blog) => (
@@ -107,13 +115,13 @@ export default function BlogsPage() {
                         : `/app/filters/new?blogId=${encodeURIComponent(blog.id)}`
                     }
                   >
-                    {sets[blog.id] ? "Editar filtros" : "Crear filtros"}
+                    {sets[blog.id] ? t("Editar filtros") : t("Crear filtros")}
                   </s-button>
                   {sets[blog.id] && (
                     <s-button
                       href={`/app/articles?filterSetId=${sets[blog.id]}`}
                     >
-                      Gestionar artículos
+                      {t("Gestionar artículos")}
                     </s-button>
                   )}
                 </s-stack>
@@ -124,7 +132,9 @@ export default function BlogsPage() {
 
         {hasMore && (
           <s-paragraph>
-            Existen más blogs. Incorporaremos paginación en el siguiente paso.
+            {t(
+              "Existen más blogs. Incorporaremos paginación en el siguiente paso.",
+            )}
           </s-paragraph>
         )}
       </s-section>

@@ -228,6 +228,71 @@ test("without selections returns only this blog's published articles, including 
   assert.equal(option(result, "motive", "unused").available, false);
 });
 
+test("search covers every result page, combines with filters and keeps complete facet counts", async () => {
+  await db.article.update({
+    where: { id: "a" },
+    data: { title: "Fiesta de Navidad", handle: "fiesta-navidad" },
+  });
+  await db.article.update({
+    where: { id: "b" },
+    data: { title: "Ideas Halloween", handle: "fiesta-halloween" },
+  });
+  await db.article.update({
+    where: { id: "d" },
+    data: { title: "Navidad con globos", handle: "decoracion-navidad" },
+  });
+  try {
+    const first = await run({}, { query: "  NAVIDAD  ", pageSize: 1 });
+    const second = await run({}, { query: "navidad", pageSize: 1, page: 2 });
+    assert.deepEqual(ids(first), ["a"]);
+    assert.deepEqual(ids(second), ["d"]);
+    assert.equal(second.total, 2);
+    assert.equal(option(second, "motive", "floral").count, 2);
+    assert.deepEqual(ids(await run({}, { query: "fiesta-halloween" })), ["b"]);
+    const empty = await run({ motive: ["floral"] }, { query: "Halloween" });
+    assert.equal(empty.total, 0);
+    assert.equal(option(empty, "motive", "floral").selected, true);
+    assert.equal(option(empty, "motive", "floral").count, 0);
+    assert.equal((await run({}, { query: "draft" })).total, 0);
+    assert.equal((await run({}, { query: "foreign" })).total, 0);
+    assert.equal((await run({}, { query: "   " })).total, 5);
+    const storefront = await getStorefrontFilters(
+      shop,
+      new URLSearchParams({
+        blogId: "gid://shopify/Blog/1",
+        q: "navidad",
+        pageSize: "1",
+        page: "2",
+      }),
+      db,
+    );
+    assert.deepEqual(ids(storefront), ["d"]);
+    assert.equal(storefront.total, 2);
+  } finally {
+    for (const id of ["a", "b", "d"])
+      await db.article.update({
+        where: { id },
+        data: { title: id, handle: id },
+      });
+  }
+});
+
+test("search rejects malformed or oversized text", async () => {
+  for (const query of [null, 7, [], "x".repeat(201), "a\nb"])
+    await assert.rejects(run({}, { query }), { code: "INVALID_SEARCH" });
+  await assert.rejects(
+    getStorefrontFilters(
+      shop,
+      new URLSearchParams({
+        blogId: "gid://shopify/Blog/1",
+        q: "x".repeat(201),
+      }),
+      db,
+    ),
+    { code: "INVALID_SEARCH" },
+  );
+});
+
 test("OR within one filter counts an article with both options only once", async () => {
   const result = await run({ motive: ["floral", "abstract"] });
   assert.deepEqual(ids(result), ["a", "b", "c", "d"]);

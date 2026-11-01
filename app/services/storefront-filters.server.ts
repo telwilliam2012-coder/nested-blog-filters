@@ -50,7 +50,14 @@ export async function getStorefrontFilters(
     return { status: "unconfigured" as const };
   }
   const result = await getFilteredArticles(
-    { shop, filterSetId: filterSet.id, selections, page, pageSize },
+    {
+      shop,
+      filterSetId: filterSet.id,
+      selections,
+      page,
+      pageSize,
+      query: params.get("q") ?? "",
+    },
     db,
   );
 

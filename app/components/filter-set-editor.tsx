@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAdminI18n } from "../i18n/admin-i18n";
 import { filterKeyError, normalizeFilterKey } from "../filter-key";
 import { celebrationFilters } from "../filter-presets";
 import type { FilterSetDraft } from "../services/filter-admin.server";
@@ -26,6 +27,7 @@ export function FilterSetEditor({
   setId,
   onSave,
 }: Props) {
+  const { t } = useAdminI18n();
   const [draft, setDraft] = useState(initial);
   const [saveAttempted, setSaveAttempted] = useState(false);
   const disabled = saving || locked;
@@ -36,12 +38,12 @@ export function FilterSetEditor({
     (key) =>
       filterKeyError(key) ??
       (normalizedKeys.filter((other) => other === key).length > 1
-        ? "Este identificador se repite en otro filtro. Usa uno diferente."
+        ? t("Este identificador se repite en otro filtro. Usa uno diferente.")
         : undefined),
   );
   const formError =
     saveAttempted && keyErrors.some(Boolean)
-      ? "Revisa los identificadores marcados antes de guardar."
+      ? t("Revisa los identificadores marcados antes de guardar.")
       : error;
 
   function save() {
@@ -76,7 +78,7 @@ export function FilterSetEditor({
   return (
     <s-page
       heading={
-        setId ? "Editar conjunto de filtros" : "Crear conjunto de filtros"
+        setId ? t("Editar conjunto de filtros") : t("Crear conjunto de filtros")
       }
     >
       <s-button
@@ -86,31 +88,32 @@ export function FilterSetEditor({
         disabled={disabled || !blogs.length}
         onClick={save}
       >
-        Guardar conjunto
+        {t("Guardar conjunto")}
       </s-button>
       <s-link slot="breadcrumb-actions" href="/app/filters">
-        Conjuntos de filtros
+        {t("Conjuntos de filtros")}
       </s-link>
       {formError && (
-        <s-banner heading="No se pudo guardar" tone="critical">
-          <s-paragraph>{formError}</s-paragraph>
+        <s-banner heading={t("No se pudo guardar")} tone="critical">
+          <s-paragraph>{t(formError)}</s-paragraph>
         </s-banner>
       )}
       {saved && !formError && (
-        <s-banner heading="Conjunto guardado" tone="success">
+        <s-banner heading={t("Conjunto guardado")} tone="success">
           <s-paragraph>
-            Ya puedes importar los artículos y asignar sus atributos.
+            {t("Ya puedes importar los artículos y asignar sus atributos.")}
           </s-paragraph>
         </s-banner>
       )}
       {locked && (
-        <s-banner heading="Importación en curso" tone="warning">
+        <s-banner heading={t("Importación en curso")} tone="warning">
           <s-paragraph>
-            Termina o cancela la importación de artículos antes de editar el
-            conjunto.
+            {t(
+              "Termina o cancela la importación de artículos antes de editar el conjunto.",
+            )}
           </s-paragraph>
           <s-link href={`/app/articles?filterSetId=${setId}`}>
-            Revisar importación
+            {t("Revisar importación")}
           </s-link>
         </s-banner>
       )}
@@ -122,10 +125,10 @@ export function FilterSetEditor({
         data-save-bar
       >
         <s-stack gap="large">
-          <s-section heading="Datos del conjunto">
+          <s-section heading={t("Datos del conjunto")}>
             <s-stack gap="base">
               <s-text-field
-                label="Nombre del conjunto"
+                label={t("Nombre del conjunto")}
                 value={draft.name}
                 required
                 maxLength={100}
@@ -135,7 +138,7 @@ export function FilterSetEditor({
                 }
               />
               <s-select
-                label="Blog"
+                label={t("Blog")}
                 value={draft.blogId}
                 disabled={disabled || Boolean(setId)}
                 onChange={(event) =>
@@ -150,13 +153,15 @@ export function FilterSetEditor({
               </s-select>
               {!blogs.length && (
                 <s-paragraph>
-                  No hay blogs disponibles en esta página. Revisa tus blogs en
-                  Shopify o consulta la siguiente página.
+                  {t(
+                    "No hay blogs disponibles en esta página. Revisa tus blogs en Shopify o consulta la siguiente página.",
+                  )}
                 </s-paragraph>
               )}
               <s-paragraph color="subdued">
-                Cada blog tiene su propio conjunto. El orden de los filtros será
-                el mismo que verán tus lectores.
+                {t(
+                  "Cada blog tiene su propio conjunto. El orden de los filtros será el mismo que verán tus lectores.",
+                )}
               </s-paragraph>
               <s-button
                 disabled={disabled || draft.filters.length > 7}
@@ -167,35 +172,39 @@ export function FilterSetEditor({
                   })
                 }
               >
-                Usar estructura Celebraciones
+                {t("Usar estructura Celebraciones")}
               </s-button>
               <s-paragraph color="subdued">
-                Prepara Motivos → Ocasión → Festividades con las etiquetas de
-                Shopify. Conserva las opciones existentes. Revisa los tres
-                niveles y guarda los cambios.
+                {t(
+                  "Prepara Motivos → Ocasión → Festividades con las etiquetas de Shopify. Conserva las opciones existentes. Revisa los tres niveles y guarda los cambios.",
+                )}
               </s-paragraph>
             </s-stack>
           </s-section>
           {draft.filters.map((filter, index) => (
             <s-section
               key={filter.id ?? `new-${index}`}
-              heading={`${index + 1}. ${filter.label || "Nuevo filtro"}`}
+              heading={`${index + 1}. ${filter.label || t("Nuevo filtro")}`}
             >
               <s-stack gap="base">
                 <s-stack direction="inline" gap="small">
                   <s-button
                     disabled={disabled || index === 0}
-                    accessibilityLabel={`Subir filtro ${filter.label}`}
+                    accessibilityLabel={t("Subir filtro {{v0}}", {
+                      v0: filter.label,
+                    })}
                     onClick={() => move(index, index - 1)}
                   >
-                    Subir
+                    {t("Subir")}
                   </s-button>
                   <s-button
                     disabled={disabled || index === draft.filters.length - 1}
-                    accessibilityLabel={`Bajar filtro ${filter.label}`}
+                    accessibilityLabel={t("Bajar filtro {{v0}}", {
+                      v0: filter.label,
+                    })}
                     onClick={() => move(index, index + 1)}
                   >
-                    Bajar
+                    {t("Bajar")}
                   </s-button>
                   <s-button
                     tone="critical"
@@ -213,7 +222,7 @@ export function FilterSetEditor({
                       })
                     }
                   >
-                    Quitar filtro
+                    {t("Quitar filtro")}
                   </s-button>
                 </s-stack>
                 <s-grid
@@ -221,7 +230,7 @@ export function FilterSetEditor({
                   gap="base"
                 >
                   <s-text-field
-                    label="Etiqueta del filtro"
+                    label={t("Etiqueta del filtro")}
                     value={filter.label}
                     disabled={disabled}
                     required
@@ -231,7 +240,7 @@ export function FilterSetEditor({
                     }
                   />
                   <s-select
-                    label="Origen de las opciones"
+                    label={t("Origen de las opciones")}
                     value={filter.source ?? "metafield"}
                     disabled={disabled}
                     onChange={(event) =>
@@ -242,24 +251,32 @@ export function FilterSetEditor({
                     }
                   >
                     <s-option value="metafield">
-                      Atributos gestionados en la app
+                      {t("Atributos gestionados en la app")}
                     </s-option>
                     <s-option value="tag">
-                      Etiquetas de los artículos en Shopify
+                      {t("Etiquetas de los artículos en Shopify")}
                     </s-option>
                   </s-select>
                   <s-text-field
-                    label="Identificador estable"
+                    label={t("Identificador estable")}
                     value={filter.key}
                     disabled={disabled || Boolean(filter.id)}
                     required
                     maxLength={40}
                     details={
                       filter.id
-                        ? "Este identificador se conserva para mantener los atributos guardados."
-                        : "Se adapta automáticamente: Ocasión → ocasion, Tipos de fiesta → tipos_de_fiesta. Después de guardar se conserva."
+                        ? t(
+                            "Este identificador se conserva para mantener los atributos guardados.",
+                          )
+                        : t(
+                            "Se adapta automáticamente: Ocasión → ocasion, Tipos de fiesta → tipos_de_fiesta. Después de guardar se conserva.",
+                          )
                     }
-                    error={saveAttempted ? keyErrors[index] : undefined}
+                    error={
+                      saveAttempted && keyErrors[index]
+                        ? t(keyErrors[index]!)
+                        : undefined
+                    }
                     onInput={(event) =>
                       changeFilter(index, { key: event.currentTarget.value })
                     }
@@ -271,13 +288,14 @@ export function FilterSetEditor({
                     }}
                   />
                 </s-grid>
-                <s-heading>Opciones disponibles</s-heading>
+                <s-heading>{t("Opciones disponibles")}</s-heading>
                 <s-paragraph color="subdued">
-                  Las etiquetas se pueden renombrar. Los valores guardados se
-                  conservan para mantener las asignaciones de artículos.
+                  {t(
+                    "Las etiquetas se pueden renombrar. Los valores guardados se conservan para mantener las asignaciones de artículos.",
+                  )}
                 </s-paragraph>
                 <s-select
-                  label="Mostrar este filtro después de"
+                  label={t("Mostrar este filtro después de")}
                   value={filter.parentKey ?? ""}
                   disabled={disabled}
                   onChange={(event) =>
@@ -287,19 +305,20 @@ export function FilterSetEditor({
                     })
                   }
                 >
-                  <s-option value="">Siempre visible</s-option>
+                  <s-option value="">{t("Siempre visible")}</s-option>
                   {draft.filters.slice(0, index).map((parent, parentIndex) => (
                     <s-option
                       key={parent.id ?? parentIndex}
                       value={normalizedKeys[parentIndex]}
                     >
-                      {parent.label || `Filtro ${parentIndex + 1}`}
+                      {parent.label ||
+                        t("Filtro {{v0}}", { v0: parentIndex + 1 })}
                     </s-option>
                   ))}
                 </s-select>
                 {filter.parentKey && (
                   <s-choice-list
-                    label="Mostrar al seleccionar alguna de estas opciones"
+                    label={t("Mostrar al seleccionar alguna de estas opciones")}
                     multiple
                     disabled={disabled}
                     onChange={(event) =>
@@ -326,9 +345,9 @@ export function FilterSetEditor({
                 )}
                 {filter.source === "tag" && (
                   <s-paragraph color="subdued">
-                    El valor de cada opción debe coincidir con una etiqueta del
-                    artículo. Sincroniza desde Artículos después de cambiar
-                    etiquetas en Shopify.
+                    {t(
+                      "El valor de cada opción debe coincidir con una etiqueta del artículo. Sincroniza desde Artículos después de cambiar etiquetas en Shopify.",
+                    )}
                   </s-paragraph>
                 )}
                 {filter.options.map((option, optionIndex) => (
@@ -345,7 +364,9 @@ export function FilterSetEditor({
                         alignItems="end"
                       >
                         <s-text-field
-                          label={`Etiqueta de opción ${optionIndex + 1}`}
+                          label={t("Etiqueta de opción {{v0}}", {
+                            v0: optionIndex + 1,
+                          })}
                           value={option.label}
                           disabled={disabled}
                           maxLength={100}
@@ -363,7 +384,9 @@ export function FilterSetEditor({
                           }
                         />
                         <s-text-field
-                          label={`Valor de opción ${optionIndex + 1}`}
+                          label={t("Valor de opción {{v0}}", {
+                            v0: optionIndex + 1,
+                          })}
                           value={option.value}
                           disabled={disabled || Boolean(option.id)}
                           maxLength={255}
@@ -386,7 +409,9 @@ export function FilterSetEditor({
                             disabled ||
                             Boolean(option.id && inUse.includes(option.id))
                           }
-                          accessibilityLabel={`Quitar opción ${option.label || optionIndex + 1}`}
+                          accessibilityLabel={t("Quitar opción {{v0}}", {
+                            v0: option.label || optionIndex + 1,
+                          })}
                           onClick={() =>
                             changeFilter(index, {
                               options: filter.options.filter(
@@ -395,20 +420,23 @@ export function FilterSetEditor({
                             })
                           }
                         >
-                          Quitar
+                          {t("Quitar")}
                         </s-button>
                       </s-grid>
                       {option.id && inUse.includes(option.id) && (
                         <s-text color="subdued">
-                          En uso: quita primero sus asignaciones desde
-                          Artículos.
+                          {t(
+                            "En uso: quita primero sus asignaciones desde Artículos.",
+                          )}
                         </s-text>
                       )}
                       <s-stack direction="inline" gap="small">
                         <s-button
                           variant="tertiary"
                           disabled={disabled || optionIndex === 0}
-                          accessibilityLabel={`Subir opción ${option.label}`}
+                          accessibilityLabel={t("Subir opción {{v0}}", {
+                            v0: option.label,
+                          })}
                           onClick={() => {
                             const options = [...filter.options];
                             [options[optionIndex - 1], options[optionIndex]] = [
@@ -418,7 +446,7 @@ export function FilterSetEditor({
                             changeFilter(index, { options });
                           }}
                         >
-                          Subir opción
+                          {t("Subir opción")}
                         </s-button>
                         <s-button
                           variant="tertiary"
@@ -426,7 +454,9 @@ export function FilterSetEditor({
                             disabled ||
                             optionIndex === filter.options.length - 1
                           }
-                          accessibilityLabel={`Bajar opción ${option.label}`}
+                          accessibilityLabel={t("Bajar opción {{v0}}", {
+                            v0: option.label,
+                          })}
                           onClick={() => {
                             const options = [...filter.options];
                             [options[optionIndex + 1], options[optionIndex]] = [
@@ -436,7 +466,7 @@ export function FilterSetEditor({
                             changeFilter(index, { options });
                           }}
                         >
-                          Bajar opción
+                          {t("Bajar opción")}
                         </s-button>
                       </s-stack>
                     </s-stack>
@@ -450,7 +480,7 @@ export function FilterSetEditor({
                     })
                   }
                 >
-                  Añadir opción
+                  {t("Añadir opción")}
                 </s-button>
               </s-stack>
             </s-section>
@@ -468,7 +498,7 @@ export function FilterSetEditor({
                 })
               }
             >
-              Añadir filtro
+              {t("Añadir filtro")}
             </s-button>
             <s-button
               variant="primary"
@@ -476,11 +506,11 @@ export function FilterSetEditor({
               loading={saving}
               disabled={disabled || !blogs.length}
             >
-              Guardar conjunto
+              {t("Guardar conjunto")}
             </s-button>
             {setId && (
               <s-button href={`/app/articles?filterSetId=${setId}`}>
-                Gestionar artículos
+                {t("Gestionar artículos")}
               </s-button>
             )}
           </s-stack>

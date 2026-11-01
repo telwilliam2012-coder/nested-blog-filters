@@ -1,0 +1,11 @@
+{
+  "filters": {
+    "name": "Blog-Filter",
+    "page_size": "Artikel pro Seite",
+    "badge_bg_color": "Hintergrundfarbe des Badges",
+    "badge_text_color": "Textfarbe des Badges",
+    "accent_color": "Allgemeine Akzentfarbe",
+    "proxy_path": "App-Proxy-Pfad",
+    "proxy_info": "Nur ändern, wenn du die App-Proxy-URL in Shopify angepasst hast."
+  }
+}

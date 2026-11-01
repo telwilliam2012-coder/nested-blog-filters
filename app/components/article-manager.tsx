@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useFetcher, useNavigate } from "react-router";
+import { useAdminI18n } from "../i18n/admin-i18n";
 import type { loader, action } from "../routes/app.articles";
 
 type Props = Awaited<ReturnType<typeof loader>>;
 
 export function ArticleManager({ sets, management, loadError }: Props) {
+  const { t } = useAdminI18n();
   const fetcher = useFetcher<typeof action>();
   const navigate = useNavigate();
   const [selected, setSelected] = useState<string[]>([]);
   const [filterId, setFilterId] = useState(
-    management?.set.filters.find((filter) => filter.source !== "tag")?.id ?? "",
+    management?.set.filters[0]?.id ?? "",
   );
   const [optionIds, setOptionIds] = useState<string[]>([]);
   const [mode, setMode] = useState<"append" | "remove" | "replace">("append");
@@ -18,6 +20,7 @@ export function ArticleManager({ sets, management, loadError }: Props) {
   const busy = fetcher.state !== "idle";
   const set = management?.set;
   const locked = Boolean(set?.sync) || importing;
+  const editingDisabled = busy || locked || Boolean(loadError);
   const filter = set?.filters.find((item) => item.id === filterId);
   const submit = fetcher.submit;
 
@@ -87,6 +90,14 @@ export function ArticleManager({ sets, management, loadError }: Props) {
           optionIds,
           mode,
           digests,
+          expectedValues: Object.fromEntries(
+            management.articles
+              .filter((article) => selected.includes(article.id))
+              .map((article) => [
+                article.id,
+                article.attributes?.[filter.id]?.values ?? [],
+              ]),
+          ),
         }),
       },
       { method: "post", action: "/app/articles" },
@@ -94,18 +105,19 @@ export function ArticleManager({ sets, management, loadError }: Props) {
   }
 
   return (
-    <s-page heading="Atributos de artículos">
+    <s-page heading={t("Atributos de artículos")}>
       <s-link slot="breadcrumb-actions" href="/app/filters">
-        Conjuntos de filtros
+        {t("Conjuntos de filtros")}
       </s-link>
       {!set || !management ? (
-        <s-section heading="Empieza con un conjunto">
+        <s-section heading={t("Empieza con un conjunto")}>
           <s-paragraph>
-            Crea los filtros de un blog para importar sus artículos y asignar
-            atributos.
+            {t(
+              "Crea los filtros de un blog para importar sus artículos y asignar atributos.",
+            )}
           </s-paragraph>
           <s-button href="/app/filters/new" variant="primary">
-            Crear conjunto
+            {t("Crear conjunto")}
           </s-button>
         </s-section>
       ) : (
@@ -117,37 +129,40 @@ export function ArticleManager({ sets, management, loadError }: Props) {
             disabled={busy || importing}
             onClick={importArticles}
           >
-            {set.sync ? "Reanudar importación" : "Sincronizar desde Shopify"}
+            {set.sync
+              ? t("Reanudar importación")
+              : t("Sincronizar desde Shopify")}
           </s-button>
           {loadError && (
             <s-banner
               tone="warning"
-              heading="No se pudieron consultar los artículos"
+              heading={t("No se pudieron consultar los artículos")}
             >
-              <s-paragraph>{loadError}</s-paragraph>
+              <s-paragraph>{t(loadError)}</s-paragraph>
               <s-paragraph>
-                Puedes sincronizar el blog para actualizar el índice y retirar
-                artículos que ya no estén disponibles.
+                {t(
+                  "Puedes sincronizar el blog para actualizar el índice y retirar artículos que ya no estén disponibles.",
+                )}
               </s-paragraph>
             </s-banner>
           )}
           {fetcher.data?.error && (
             <s-banner
               tone="critical"
-              heading="No se pudo completar la operación"
+              heading={t("No se pudo completar la operación")}
             >
-              <s-paragraph>{fetcher.data.error}</s-paragraph>
+              <s-paragraph>{t(fetcher.data.error)}</s-paragraph>
             </s-banner>
           )}
           {fetcher.data?.message && (
-            <s-banner tone="success" heading="Operación completada">
-              <s-paragraph>{fetcher.data.message}</s-paragraph>
+            <s-banner tone="success" heading={t("Operación completada")}>
+              <s-paragraph>{t(fetcher.data.message)}</s-paragraph>
             </s-banner>
           )}
-          <s-section heading="Blog y sincronización">
+          <s-section heading={t("Blog y sincronización")}>
             <s-stack gap="base">
               <s-select
-                label="Conjunto de filtros"
+                label={t("Conjunto de filtros")}
                 value={set.id}
                 disabled={busy || importing}
                 onChange={(event) =>
@@ -163,26 +178,29 @@ export function ArticleManager({ sets, management, loadError }: Props) {
                 ))}
               </s-select>
               <s-paragraph>
-                Importa los artículos y sus atributos antes de etiquetarlos. La
-                sincronización no modifica contenido en Shopify.
+                {t(
+                  "Importa los artículos y sus atributos antes de etiquetarlos. La sincronización no modifica contenido en Shopify.",
+                )}
               </s-paragraph>
               <s-link href={`/app/filters/${set.id}`}>
-                Editar filtros y opciones
+                {t("Editar filtros y opciones")}
               </s-link>
               {set.sync && (
                 <s-stack gap="small">
                   <s-text>
-                    {set.sync.importedCount} artículos importados en este
-                    recorrido.
+                    {t("{{v0}} artículos importados en este recorrido.", {
+                      v0: set.sync.importedCount,
+                    })}
                   </s-text>
                   <s-paragraph color="subdued">
-                    Si cierras esta página, podrás reanudar la importación. Las
-                    ediciones se habilitan al terminar o cancelar.
+                    {t(
+                      "Si cierras esta página, podrás reanudar la importación. Las ediciones se habilitan al terminar o cancelar.",
+                    )}
                   </s-paragraph>
                   <s-stack direction="inline" gap="small">
                     {importing && (
                       <s-button onClick={() => setImporting(false)}>
-                        Pausar después de esta página
+                        {t("Pausar después de esta página")}
                       </s-button>
                     )}
                     <s-button
@@ -199,28 +217,31 @@ export function ArticleManager({ sets, management, loadError }: Props) {
                         )
                       }
                     >
-                      Cancelar importación
+                      {t("Cancelar importación")}
                     </s-button>
                   </s-stack>
                 </s-stack>
               )}
             </s-stack>
           </s-section>
-          <s-section heading="Artículos guardados">
+          <s-section heading={t("Artículos guardados")}>
             <s-stack gap="base">
               <s-paragraph>
-                {management.total} artículos en el índice. Selecciona uno para
-                editarlo individualmente o varios para aplicar un cambio masivo.
+                {t(
+                  "{{v0}} artículos en el índice. Selecciona uno para editarlo individualmente o varios para aplicar un cambio masivo.",
+                  { v0: management.total },
+                )}
               </s-paragraph>
               {!management.articles.length ? (
                 <s-paragraph>
-                  Sincroniza desde Shopify para consultar los artículos de este
-                  blog.
+                  {t(
+                    "Sincroniza desde Shopify para consultar los artículos de este blog.",
+                  )}
                 </s-paragraph>
               ) : (
                 <>
                   <s-checkbox
-                    label="Seleccionar los artículos de esta página"
+                    label={t("Seleccionar los artículos de esta página")}
                     checked={
                       selected.length === management.articles.length &&
                       selected.length > 0
@@ -238,12 +259,12 @@ export function ArticleManager({ sets, management, loadError }: Props) {
                   />
                   <s-table>
                     <s-table-header-row>
-                      <s-table-header>Selección</s-table-header>
+                      <s-table-header>{t("Selección")}</s-table-header>
                       <s-table-header listSlot="primary">
-                        Artículo
+                        {t("Artículo")}
                       </s-table-header>
                       <s-table-header listSlot="labeled">
-                        Atributos
+                        {t("Atributos")}
                       </s-table-header>
                     </s-table-header-row>
                     <s-table-body>
@@ -251,7 +272,9 @@ export function ArticleManager({ sets, management, loadError }: Props) {
                         <s-table-row key={article.id}>
                           <s-table-cell>
                             <s-checkbox
-                              label={`Seleccionar ${article.title}`}
+                              label={t("Seleccionar {{v0}}", {
+                                v0: article.title,
+                              })}
                               labelAccessibilityVisibility="exclusive"
                               checked={selected.includes(article.id)}
                               disabled={locked || busy || !article.attributes}
@@ -275,7 +298,7 @@ export function ArticleManager({ sets, management, loadError }: Props) {
                                   {item.label}:{" "}
                                   {article.attributes?.[item.id]?.values.join(
                                     ", ",
-                                  ) || "Sin asignar"}
+                                  ) || t("Sin asignar")}
                                 </s-text>
                               ))}
                             </s-stack>
@@ -293,10 +316,13 @@ export function ArticleManager({ sets, management, loadError }: Props) {
                     href={`/app/articles?filterSetId=${set.id}&page=${management.page - 1}`}
                     onClick={() => setSelected([])}
                   >
-                    Anterior
+                    {t("Anterior")}
                   </s-button>
                   <s-text>
-                    Página {management.page} de {management.totalPages}
+                    {t("Página {{v0}} de {{v1}}", {
+                      v0: management.page,
+                      v1: management.totalPages,
+                    })}
                   </s-text>
                   <s-button
                     disabled={
@@ -307,112 +333,129 @@ export function ArticleManager({ sets, management, loadError }: Props) {
                     href={`/app/articles?filterSetId=${set.id}&page=${management.page + 1}`}
                     onClick={() => setSelected([])}
                   >
-                    Siguiente
+                    {t("Siguiente")}
                   </s-button>
                 </s-stack>
               )}
             </s-stack>
           </s-section>
-          <s-section
-            heading={`Editar atributos · ${selected.length} seleccionados`}
-          >
-            <s-stack gap="base">
-              {set.filters.some((item) => item.source === "tag") && (
-                <s-paragraph>
-                  Los filtros que usan etiquetas se actualizan desde Shopify.
-                  Edita las etiquetas del artículo y pulsa Sincronizar desde
-                  Shopify. Aquí puedes editar los filtros de atributos de la
-                  app.
-                </s-paragraph>
-              )}
-              <s-grid
-                gridTemplateColumns="@container (inline-size <= 480px) 1fr, 1fr 1fr"
-                gap="base"
-              >
-                <s-select
-                  label="Filtro que quieres editar"
-                  value={filterId}
-                  disabled={busy || locked}
-                  onChange={(event) => {
-                    setFilterId(event.currentTarget.value);
-                    setOptionIds([]);
-                  }}
+          {set.filters.length === 0 ? (
+            <s-section heading={t("Configura los filtros del blog")}>
+              <s-paragraph>
+                {t(
+                  "Añade al menos un filtro y sus opciones antes de asignarlos a los artículos.",
+                )}
+              </s-paragraph>
+              <s-button href={`/app/filters/${set.id}`}>
+                {t("Configurar filtros")}
+              </s-button>
+            </s-section>
+          ) : (
+            <s-section
+              heading={t("Editar atributos · {{v0}} seleccionados", {
+                v0: selected.length,
+              })}
+            >
+              <s-stack gap="base">
+                {filter?.source === "tag" && (
+                  <s-paragraph>
+                    {t(
+                      "Las opciones de este filtro se guardan como etiquetas del artículo en Shopify. Puedes añadirlas, quitarlas o reemplazarlas desde aquí. Las demás etiquetas se conservan.",
+                    )}
+                  </s-paragraph>
+                )}
+                <s-grid
+                  gridTemplateColumns="@container (inline-size <= 480px) 1fr, 1fr 1fr"
+                  gap="base"
                 >
-                  {set.filters
-                    .filter((item) => item.source !== "tag")
-                    .map((item) => (
+                  <s-select
+                    label={t("Filtro que quieres editar")}
+                    value={filterId}
+                    disabled={editingDisabled || !set.filters.length}
+                    onChange={(event) => {
+                      setFilterId(event.currentTarget.value);
+                      setOptionIds([]);
+                    }}
+                  >
+                    {set.filters.map((item) => (
                       <s-option key={item.id} value={item.id}>
                         {item.label}
                       </s-option>
                     ))}
-                </s-select>
-                <s-select
-                  label="Operación"
-                  value={mode}
-                  disabled={busy || locked}
-                  onChange={(event) =>
-                    setMode(event.currentTarget.value as typeof mode)
-                  }
-                >
-                  <s-option value="append">Añadir opciones</s-option>
-                  <s-option value="remove">Quitar opciones</s-option>
-                  <s-option value="replace">
-                    Reemplazar las opciones de este filtro
-                  </s-option>
-                </s-select>
-              </s-grid>
-              {filter && filter.options.length > 0 ? (
-                <s-choice-list
-                  label="Opciones"
-                  multiple
-                  disabled={busy || locked}
-                  onChange={(event) => setOptionIds(event.currentTarget.values)}
-                >
-                  {filter.options.map((option) => (
-                    <s-choice
-                      key={option.id}
-                      value={option.id}
-                      selected={optionIds.includes(option.id)}
-                    >
-                      {option.label}
-                    </s-choice>
-                  ))}
-                </s-choice-list>
-              ) : (
-                <s-paragraph>
-                  Añade opciones al filtro desde el constructor o impórtalas
-                  desde los atributos existentes de Shopify.
-                </s-paragraph>
-              )}
-              <s-paragraph color="subdued">
-                Solo se modifica el filtro elegido. Los demás atributos se
-                conservan. Puedes seleccionar hasta 25 artículos por lote.
-              </s-paragraph>
-              {mode === "replace" && (
-                <s-banner tone="warning" heading="Reemplazar valores">
+                  </s-select>
+                  <s-select
+                    label={t("Operación")}
+                    value={mode}
+                    disabled={editingDisabled || !filter}
+                    onChange={(event) =>
+                      setMode(event.currentTarget.value as typeof mode)
+                    }
+                  >
+                    <s-option value="append">{t("Añadir opciones")}</s-option>
+                    <s-option value="remove">{t("Quitar opciones")}</s-option>
+                    <s-option value="replace">
+                      {t("Reemplazar las opciones de este filtro")}
+                    </s-option>
+                  </s-select>
+                </s-grid>
+                {filter && filter.options.length > 0 ? (
+                  <s-choice-list
+                    label={t("Opciones")}
+                    multiple
+                    disabled={editingDisabled}
+                    onChange={(event) =>
+                      setOptionIds(event.currentTarget.values)
+                    }
+                  >
+                    {filter.options.map((option) => (
+                      <s-choice
+                        key={option.id}
+                        value={option.id}
+                        selected={optionIds.includes(option.id)}
+                      >
+                        {option.label}
+                      </s-choice>
+                    ))}
+                  </s-choice-list>
+                ) : (
                   <s-paragraph>
-                    Las opciones elegidas sustituirán los valores actuales de
-                    este filtro en los artículos seleccionados. Sin opciones
-                    seleccionadas, se vaciará este filtro.
+                    {t(
+                      "Añade opciones al filtro desde el constructor o impórtalas desde los atributos existentes de Shopify.",
+                    )}
                   </s-paragraph>
-                </s-banner>
-              )}
-              <s-button
-                variant="primary"
-                loading={busy && !importing}
-                disabled={
-                  busy ||
-                  locked ||
-                  !selected.length ||
-                  !filter ||
-                  (mode !== "replace" && !optionIds.length)
-                }
-                onClick={saveAttributes}
-              >
-                Guardar atributos en Shopify
-              </s-button>
-            </s-stack>
-          </s-section>
+                )}
+                <s-paragraph color="subdued">
+                  {t(
+                    "Solo se modifican las opciones configuradas para el filtro elegido. Puedes seleccionar hasta 25 artículos por lote.",
+                  )}
+                </s-paragraph>
+                {mode === "replace" && (
+                  <s-banner tone="warning" heading={t("Reemplazar valores")}>
+                    <s-paragraph>
+                      {t(
+                        "Las opciones elegidas sustituirán los valores actuales de este filtro en los artículos seleccionados. Sin opciones seleccionadas, se vaciará este filtro.",
+                      )}
+                    </s-paragraph>
+                  </s-banner>
+                )}
+                <s-button
+                  variant="primary"
+                  loading={busy && !importing}
+                  disabled={
+                    editingDisabled ||
+                    !selected.length ||
+                    !filter ||
+                    (mode !== "replace" && !optionIds.length)
+                  }
+                  onClick={saveAttributes}
+                >
+                  {filter?.source === "tag"
+                    ? t("Guardar etiquetas en Shopify")
+                    : t("Guardar atributos en Shopify")}
+                </s-button>
+              </s-stack>
+            </s-section>
+          )}
         </>
       )}
     </s-page>

@@ -1,0 +1,31 @@
+{
+  "filters": {
+    "search_label": "Rechercher des articles du blog",
+    "search_placeholder": "Rechercher des articles…",
+    "search_submit": "Rechercher",
+    "heading": "Des idées pour célébrer à votre façon",
+    "intro": "Trouvez l'inspiration pour votre prochaine fête. Choisissez un thème et découvrez les idées associées.",
+    "eyebrow": "De l'inspiration pour chaque fête",
+    "panel_title": "Trouvez votre idée",
+    "guide": "Commencez par un thème, puis découvrez les options proposées. Vous pouvez sélectionner une seule option par filtre.",
+    "choose": "Choisissez une option",
+    "active": "Filtres sélectionnés",
+    "remove": "Retirer {{ value }}",
+    "empty_title": "Essayons une autre combinaison",
+    "loading": "Mise à jour des articles et des options disponibles…",
+    "error": "Impossible de charger les articles. Réessayez ou ouvrez le blog.",
+    "empty": "Aucun article ne correspond à ces filtres. Modifiez une option ou réinitialisez les filtres.",
+    "unconfigured": "Ce blog n'a pas encore d'ensemble de filtres enregistré. Configurez-le dans l'application pour activer les filtres.",
+    "results": "Résultats trouvés : {{ count }}",
+    "page": "Page {{ current }} sur {{ total }}",
+    "read": "Lire l'article",
+    "clear": "Réinitialiser les filtres",
+    "retry": "Réessayer",
+    "pagination": "Pages des articles",
+    "previous": "Précédent",
+    "next": "Suivant",
+    "view_blog": "Voir le blog",
+    "no_script": "Activez JavaScript pour filtrer les articles. Vous pouvez lire les articles ci-dessus ou ouvrir le blog.",
+    "choose_blog": "Ouvrez un modèle de blog pour prévisualiser ce bloc."
+  }
+}

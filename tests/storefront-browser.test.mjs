@@ -50,11 +50,19 @@ const articles = [
   },
 ];
 
+function matchesQuery(article, params) {
+  const query = (params.get("q") ?? "").trim().toLocaleLowerCase("es");
+  return [article.title, article.handle].some((value) =>
+    value.toLocaleLowerCase("es").includes(query),
+  );
+}
+
 function payload(params) {
   const selected = Object.fromEntries(
     ["motive", "occasion"].map((id) => [id, params.getAll(`option.${id}`)]),
   );
   const matches = (article, except) =>
+    matchesQuery(article, params) &&
     Object.entries(selected).every(
       ([id, options]) =>
         id === except || !options.length || options.includes(article[id]),
@@ -138,6 +146,7 @@ function nestedPayload(params) {
     },
   ];
   const matches = (article, ids) =>
+    matchesQuery(article, params) &&
     ids.every(
       (id) => !selected[id].length || selected[id].includes(article[id]),
     );
@@ -211,8 +220,9 @@ function block(id) {
     data-locale="es" data-loading="Cargando…" data-error="Error al consultar" data-empty="Sin coincidencias"
     data-results-label="Artículos encontrados: [count]" data-page-label="Página [current] de [total]" data-read-label="Leer artículo"
     data-choose-label="Elige una opción" data-remove-label="Quitar [value]" data-empty-title="Probemos otra combinación">
-    <header class="nbf__header"><p class="nbf__eyebrow">Inspiración para cada celebración</p><h2 class="nbf__heading">Ideas para celebrar a tu manera</h2><p>Encuentra inspiración para tu próxima fiesta. Elige un motivo y descubre las opciones relacionadas.</p></header>
-    <section class="nbf__toolbar" data-toolbar hidden><div class="nbf__panel-heading"><h3 class="nbf__filter-title">Encuentra tu idea</h3><button class="nbf__clear" data-clear>Limpiar filtros</button></div><div class="nbf__filters" data-filters></div><div class="nbf__active" data-active hidden></div><p class="nbf__guide">Empieza por un motivo y sigue las opciones que aparecen. Puedes elegir varias en cada filtro.</p></section>
+    <h2 class="nbf__sr-only">Ideas para celebrar</h2>
+    <div class="nbf__search-bar"><form class="nbf__search" action="/search" method="get" role="search" data-search-form><svg class="nbf__search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg><input type="hidden" name="type" value="article"><label class="nbf__sr-only" for="search-${id}">Buscar artículos del blog</label><input id="search-${id}" type="search" name="q" maxlength="200" placeholder="Buscar artículos…" data-search-input><button class="nbf__search-submit" type="submit">Buscar</button></form></div>
+    <section class="nbf__toolbar" data-toolbar hidden><div class="nbf__filter-row"><div class="nbf__filters" data-filters></div><button class="nbf__clear" data-clear>Limpiar filtros</button></div><div class="nbf__active" data-active hidden></div></section>
     <p class="nbf__status" data-status role="status" aria-live="polite"></p><button data-retry hidden>Reintentar</button>
     <div data-results-container><ul class="nbf__articles" data-results><li>Artículo de Liquid</li></ul></div>
     <nav class="nbf__pagination" data-pagination hidden><button class="nbf__button" data-previous>Anterior</button><span data-page></span><button class="nbf__button" data-next>Siguiente</button></nav>
@@ -221,22 +231,24 @@ function block(id) {
 }
 
 test(
-  "storefront works in Chromium: multi-select, races, safe text, recovery, lifecycle and mobile layout",
+  "storefront works in Chromium: single selection, races, safe text, recovery, lifecycle and mobile layout",
   {
     skip:
       !chrome &&
       "Set NBF_TEST_BROWSER to a Chromium executable to run browser checks",
-    timeout: 30000,
+    timeout: 60000,
   },
   async () => {
     let mode = "ready";
     let requests = 0;
     let race = false;
+    const selectionRequests = [];
     const nestedRequests = [];
     const server = createServer(async (request, response) => {
       const url = new URL(request.url, "http://localhost");
       if (url.pathname === "/apps/nested-filters") {
         requests++;
+        selectionRequests.push(url.searchParams);
         const result = ["nested", "preview"].includes(mode)
           ? nestedPayload(url.searchParams)
           : payload(url.searchParams);
@@ -304,13 +316,19 @@ test(
     let socket;
     try {
       const portFile = path.join(profile, "DevToolsActivePort");
-      for (let attempt = 0; !existsSync(portFile) && attempt < 100; attempt++)
-        await delay(50);
-      assert.ok(
-        existsSync(portFile),
-        "Chromium did not open its local debugging port",
-      );
-      const port = readFileSync(portFile, "utf8").split("\n")[0];
+      let port;
+      for (let attempt = 0; !port && attempt < 100; attempt++) {
+        try {
+          const candidate = readFileSync(portFile, "utf8")
+            .split("\n")[0]
+            .trim();
+          if (/^\d+$/.test(candidate)) port = candidate;
+        } catch (error) {
+          if (!["ENOENT", "EBUSY", "EPERM"].includes(error.code)) throw error;
+        }
+        if (!port) await delay(50);
+      }
+      assert.ok(port, "Chromium did not open its local debugging port");
       const page = (
         await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()
       ).find((target) => target.type === "page");
@@ -364,7 +382,7 @@ test(
       };
       const capture = async (name) => {
         if (!process.env.NBF_SCREENSHOT_DIR) return;
-        await delay(180);
+        await delay(360);
         mkdirSync(process.env.NBF_SCREENSHOT_DIR, { recursive: true });
         const { cssContentSize } = await call("Page.getLayoutMetrics");
         const screenshot = await call("Page.captureScreenshot", {
@@ -389,6 +407,18 @@ test(
         `document.querySelector('#one [data-status]')?.textContent === 'Artículos encontrados: 3' && document.querySelector('#two [data-status]')?.textContent === 'Artículos encontrados: 3'`,
       );
       assert.equal(
+        await evaluate(
+          "document.querySelectorAll('#one input[type=radio]').length",
+        ),
+        4,
+      );
+      assert.equal(
+        await evaluate(
+          "document.querySelectorAll('input[type=checkbox]').length",
+        ),
+        0,
+      );
+      assert.equal(
         await evaluate("document.querySelectorAll('img').length"),
         0,
       );
@@ -397,6 +427,136 @@ test(
           "document.querySelector('#one [data-results]').textContent.includes('<img src=x onerror=alert(1)>')",
         ),
         true,
+      );
+      assert.equal(
+        await evaluate(
+          "document.querySelector('#one summary').getBoundingClientRect().height >= 44 && getComputedStyle(document.querySelector('#one summary')).borderRadius === '12px'",
+        ),
+        true,
+      );
+      assert.equal(
+        await evaluate("document.querySelector('#one .nbf__header') === null"),
+        true,
+      );
+      assert.deepEqual(
+        await evaluate(`(() => {
+          const details = document.querySelector('#one .nbf__filter');
+          details.querySelector('summary').click();
+          details.animation.pause();
+          details.animation.currentTime = 0;
+          const style = getComputedStyle(details.querySelector('.nbf__menu'));
+          const start = [style.transform, style.opacity];
+          details.animation.cancel();
+          details.open = false;
+          return start;
+        })()`),
+        ["matrix(1, 0, 0, 1, 0, -4)", "0"],
+      );
+      await evaluate(
+        "document.querySelector('#one [data-search-input]').value='historia'; document.querySelector('#one [data-search-form]').requestSubmit()",
+      );
+      await waitFor(
+        "document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 3' && document.querySelector('#one').query === 'historia' && document.querySelector('#one [data-results-container]').getAttribute('aria-busy') === 'false'",
+      );
+      await evaluate("document.querySelector('#one [data-next]').click()");
+      await waitFor(
+        "document.querySelector('#one [data-page]').textContent === 'Página 2 de 2'",
+      );
+      await evaluate(
+        "document.querySelector('#one [data-search-input]').value='floral'; document.querySelector('#one [data-search-form]').requestSubmit()",
+      );
+      await waitFor(
+        "document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 2' && document.querySelector('#one').page === 1",
+      );
+      await evaluate(
+        "document.querySelector('#one [data-search-input]').value=''; document.querySelector('#one [data-search-input]').dispatchEvent(new Event('search'))",
+      );
+      await waitFor(
+        "document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 3'",
+      );
+      await evaluate(
+        "document.querySelector('#one input[value=abstract]').click()",
+      );
+      await waitFor(
+        "document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 1'",
+      );
+      const beforeColorChange = requests;
+      await evaluate(`{
+        const style = document.createElement('style');
+        style.id = 'branding-preview';
+        style.textContent = '#one { --nbf-badge-bg: #7c3aed; --nbf-badge-text: #fff8e1; --nbf-accent: #b91c1c; }';
+        document.head.prepend(style);
+      }`);
+      await waitFor(
+        "getComputedStyle(document.querySelector('#one .nbf__filter--selected .nbf__step')).backgroundColor === 'rgb(124, 58, 237)'",
+      );
+      assert.deepEqual(
+        await evaluate(`[
+          getComputedStyle(document.querySelector('#one .nbf__filter--selected .nbf__step')).color,
+          getComputedStyle(document.querySelector('#one .nbf__selection-count')).backgroundColor,
+          getComputedStyle(document.querySelector('#one .nbf__selection-count')).color,
+          getComputedStyle(document.querySelector('#one input:checked + .nbf__choice'), '::before').borderTopColor,
+          getComputedStyle(document.querySelector('#one .nbf__search-submit')).backgroundColor,
+          getComputedStyle(document.querySelector('#two .nbf__search-submit')).backgroundColor,
+          getComputedStyle(document.querySelector('#one .nbf__trigger')).borderRadius,
+          getComputedStyle(document.querySelector('#one .nbf__menu')).borderRadius
+        ]`),
+        [
+          "rgb(255, 248, 225)",
+          "rgb(124, 58, 237)",
+          "rgb(255, 248, 225)",
+          "rgb(185, 28, 28)",
+          "rgb(185, 28, 28)",
+          "rgb(36, 92, 76)",
+          "12px",
+          "12px",
+        ],
+      );
+      await capture("storefront-custom-colors.png");
+      await evaluate(
+        "document.querySelector('#branding-preview').textContent = '#one { --nbf-badge-bg: #9a3412; --nbf-badge-text: #ffffff; --nbf-accent: #1d4ed8; }'",
+      );
+      await waitFor(
+        "getComputedStyle(document.querySelector('#one .nbf__filter--selected .nbf__step')).backgroundColor === 'rgb(154, 52, 18)' && getComputedStyle(document.querySelector('#one .nbf__search-submit')).backgroundColor === 'rgb(29, 78, 216)'",
+      );
+      assert.equal(requests, beforeColorChange);
+      await evaluate("document.querySelector('#branding-preview').remove()");
+      await waitFor(
+        "getComputedStyle(document.querySelector('#one .nbf__filter--selected .nbf__step')).backgroundColor === 'rgb(14, 90, 68)' && getComputedStyle(document.querySelector('#one .nbf__filter--selected .nbf__step')).color === 'rgb(255, 255, 255)'",
+      );
+      await evaluate(
+        "document.querySelector('#one [data-search-input]').value='floral'; document.querySelector('#one [data-search-form]').requestSubmit()",
+      );
+      await waitFor(
+        "document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 0'",
+      );
+      assert.equal(
+        await evaluate(
+          "document.querySelector('#one input[value=abstract]').checked",
+        ),
+        true,
+      );
+      await evaluate("document.querySelector('#one [data-clear]').click()");
+      await waitFor(
+        "document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 3'",
+      );
+      assert.equal(
+        await evaluate(
+          "document.querySelector('#one [data-search-input]').value",
+        ),
+        "",
+      );
+      await evaluate(
+        "document.querySelector('#one [data-search-input]').value='floral'; document.querySelector('#one [data-search-form]').requestSubmit()",
+      );
+      await waitFor(
+        "document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 2'",
+      );
+      await evaluate(
+        "const input=document.querySelector('#one [data-search-input]'); input.value=''; input.dispatchEvent(new Event('search'))",
+      );
+      await waitFor(
+        "document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 3'",
       );
       await evaluate("document.querySelector('#one [data-next]').click()");
       await waitFor(
@@ -411,22 +571,108 @@ test(
       assert.equal(await evaluate("document.activeElement.value"), "floral");
       assert.equal(
         await evaluate(
+          "getComputedStyle(document.querySelector('#one')).isolation === 'isolate' && getComputedStyle(document.querySelector('#one .nbf__menu')).borderRadius === '12px' && getComputedStyle(document.querySelector('#one .nbf__menu')).boxShadow !== 'none' && getComputedStyle(document.querySelector('#one .nbf__input')).opacity === '0'",
+        ),
+        true,
+      );
+      await call("Input.dispatchKeyEvent", {
+        type: "keyDown",
+        key: "ArrowDown",
+        code: "ArrowDown",
+        windowsVirtualKeyCode: 40,
+      });
+      await call("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key: "ArrowDown",
+        code: "ArrowDown",
+        windowsVirtualKeyCode: 40,
+      });
+      await waitFor(
+        "document.querySelector('#one input[value=abstract]').checked && document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 1'",
+      );
+      await call("Input.dispatchKeyEvent", {
+        type: "keyDown",
+        key: "ArrowUp",
+        code: "ArrowUp",
+        windowsVirtualKeyCode: 38,
+      });
+      await call("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key: "ArrowUp",
+        code: "ArrowUp",
+        windowsVirtualKeyCode: 38,
+      });
+      await waitFor(
+        "document.querySelector('#one input[value=floral]').checked && document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 2'",
+      );
+      assert.equal(
+        await evaluate(
           "document.querySelector('#two [data-status]').textContent",
         ),
         "Artículos encontrados: 3",
       );
       await evaluate(
+        "document.querySelector('#two input[value=floral]').click()",
+      );
+      await waitFor(
+        "document.querySelector('#two [data-status]').textContent === 'Artículos encontrados: 2'",
+      );
+      await evaluate(
+        "document.querySelector('#two input[value=abstract]').click()",
+      );
+      await waitFor(
+        "document.querySelector('#two [data-status]').textContent === 'Artículos encontrados: 1'",
+      );
+      assert.equal(
+        await evaluate(
+          "document.querySelector('#one input[value=floral]').checked && document.querySelector('#two input[value=abstract]').checked && !document.querySelector('#two input[value=floral]').checked",
+        ),
+        true,
+      );
+      await evaluate("document.querySelector('#two [data-clear]').click()");
+      await waitFor(
+        "document.querySelector('#two [data-status]').textContent === 'Artículos encontrados: 3'",
+      );
+      await evaluate(
         "document.querySelector('#one input[value=abstract]').click()",
       );
       await waitFor(
-        "document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 3'",
+        "document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 1'",
       );
       assert.equal(
         await evaluate(
           "document.querySelectorAll('#one input:checked').length",
         ),
-        2,
+        1,
       );
+      assert.equal(
+        await evaluate(
+          "document.querySelector('#one input[value=floral]').checked",
+        ),
+        false,
+      );
+      assert.deepEqual(selectionRequests.at(-1).getAll("option.motive"), [
+        "abstract",
+      ]);
+      await waitFor(
+        "document.querySelectorAll('#one [data-active] button').length === 1 && document.querySelector('#one [data-remove][value=floral]') === null",
+      );
+      const beforeReselect = requests;
+      await evaluate(
+        "document.querySelector('#one input[value=abstract]').click()",
+      );
+      assert.equal(requests, beforeReselect);
+      race = true;
+      await evaluate(
+        "document.querySelector('#one input[value=floral]').click(); document.querySelector('#one input[value=abstract]').click(); document.querySelector('#one input[value=floral]').click()",
+      );
+      await waitFor(
+        "document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 2' && document.querySelector('#one input[value=floral]').checked && document.querySelectorAll('#one input:checked').length === 1",
+      );
+      assert.deepEqual(selectionRequests.at(-1).getAll("option.motive"), [
+        "floral",
+      ]);
+      race = false;
       await evaluate("document.querySelector('#one [data-clear]').click()");
       await waitFor(
         "document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 3'",
@@ -517,13 +763,13 @@ test(
       );
       assert.equal(
         await evaluate(
-          "document.querySelector('#one summary[data-filter-id=root]').textContent.includes('Celebraciones')",
+          "document.querySelector('#one summary[data-filter-id=root]').getAttribute('aria-label').includes('Celebraciones')",
         ),
         true,
       );
       assert.equal(
         await evaluate(
-          "document.querySelector('#one summary[data-filter-id=holiday]').textContent.includes('Elige una opción')",
+          "document.querySelector('#one summary[data-filter-id=holiday] .nbf__filter-label').textContent === 'Festividades' && document.querySelector('#one details[data-filter-id=holiday]').dataset.depth === '2'",
         ),
         true,
       );
@@ -536,11 +782,8 @@ test(
       await evaluate(
         "document.querySelector('#one summary[data-filter-id=occasion]').dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))",
       );
-      assert.equal(
-        await evaluate(
-          "document.querySelectorAll('#one details[open]').length",
-        ),
-        0,
+      await waitFor(
+        "document.querySelectorAll('#one details[open]').length === 0",
       );
       assert.equal(
         await evaluate("document.activeElement.dataset.filterId"),
@@ -563,11 +806,8 @@ test(
         button: "left",
         clickCount: 1,
       });
-      assert.equal(
-        await evaluate(
-          "document.querySelectorAll('#one details[open]').length",
-        ),
-        0,
+      await waitFor(
+        "document.querySelectorAll('#one details[open]').length === 0",
       );
       await evaluate(
         "document.querySelector('#one input[value=christmas]').click()",
@@ -588,6 +828,24 @@ test(
         3,
       );
       await evaluate(
+        "document.querySelector('#one input[value=halloween]').click()",
+      );
+      await waitFor(
+        "document.querySelector('#one [data-results]').textContent.includes('Fiesta de Halloween') && document.querySelector('#one input[value=halloween]').checked && document.querySelector('#one [data-results-container]').getAttribute('aria-busy') === 'false'",
+      );
+      assert.deepEqual(nestedRequests.at(-1).getAll("option.holiday"), [
+        "halloween",
+      ]);
+      await waitFor(
+        "!document.querySelector('#one input[value=christmas]').checked && document.querySelectorAll('#one [data-active] button').length === 3",
+      );
+      await evaluate(
+        "document.querySelector('#one input[value=christmas]').click()",
+      );
+      await waitFor(
+        "document.querySelector('#one input[value=christmas]').checked && document.querySelector('#one [data-results]').textContent.includes('Fiesta de Navidad') && document.querySelector('#one [data-results-container]').getAttribute('aria-busy') === 'false'",
+      );
+      await evaluate(
         "document.querySelector('#one [data-remove][value=christmas]').click()",
       );
       await waitFor(
@@ -600,7 +858,7 @@ test(
         "document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 1'",
       );
       await evaluate(
-        "document.querySelector('#one input[value=celebrations]').click(); document.querySelector('#one input[value=decorations]').click()",
+        "document.querySelector('#one input[value=decorations]').click()",
       );
       await waitFor(
         "document.querySelector('#one [data-results]').textContent.includes('Una decoración') && document.querySelector('#one details[data-filter-id=occasion]') === null && document.querySelector('#one input[value=decorations]').checked && document.querySelector('#one [data-status]').textContent === 'Artículos encontrados: 1'",
@@ -659,6 +917,56 @@ test(
         );
         await capture("storefront-nested-mobile.png");
       }
+      await call("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+      });
+      await evaluate(`{
+        const style = document.createElement('style');
+        style.id = 'theme-collision';
+        style.textContent = 'button,summary,input,fieldset,label{padding:70px;border:9px solid red;background:red;letter-spacing:6px;text-transform:uppercase}summary::after{content:"THEME"}';
+        document.head.append(style);
+        const probe = document.createElement('button');
+        probe.id = 'theme-probe';
+        probe.textContent = 'Theme';
+        document.body.append(probe);
+      }`);
+      assert.equal(
+        await evaluate(`
+        getComputedStyle(document.querySelector('#theme-probe')).paddingTop === '70px' &&
+        getComputedStyle(document.querySelector('#one .nbf__trigger')).paddingTop === '10px' &&
+        getComputedStyle(document.querySelector('#one .nbf__trigger')).textTransform === 'none' &&
+        getComputedStyle(document.querySelector('#one .nbf__trigger'), '::after').content === 'none' &&
+        getComputedStyle(document.querySelector('#one .nbf__menu')).paddingTop === '8px' &&
+        getComputedStyle(document.querySelector('#one .nbf__trigger')).fontFamily === getComputedStyle(document.querySelector('#one')).fontFamily
+      `),
+        true,
+      );
+      await call("Emulation.setDeviceMetricsOverride", {
+        width: 320,
+        height: 850,
+        deviceScaleFactor: 1,
+        mobile: true,
+      });
+      await evaluate(`{
+        document.querySelector('#one').dir = 'rtl';
+        document.querySelector('#one .nbf__filter-value').textContent = 'Una selección con un nombre muy largo '.repeat(8);
+        document.querySelector('#one summary').click();
+      }`);
+      await waitFor(
+        "document.querySelector('#one details').open && document.querySelector('#one details .nbf__menu').inert === false",
+      );
+      assert.equal(
+        await evaluate(`
+        document.documentElement.scrollWidth <= 320 &&
+        document.querySelector('#one .nbf__menu').getBoundingClientRect().left >= 0 &&
+        document.querySelector('#one .nbf__menu').getBoundingClientRect().right <= 320 &&
+        getComputedStyle(document.querySelector('#one .nbf__trigger')).transitionDuration === '0s'
+      `),
+        true,
+      );
+      await evaluate(
+        "document.querySelector('#theme-probe').remove(); document.querySelector('#theme-collision').remove()",
+      );
       mode = "unconfigured";
       const before = requests;
       await evaluate(
@@ -668,9 +976,22 @@ test(
         "document.querySelector('#one [data-toolbar]').hidden && document.querySelector('#one [data-results]').textContent.includes('Artículo de Liquid')",
       );
       assert.equal(requests, before + 1);
+      for (const params of selectionRequests) {
+        for (const key of new Set(params.keys())) {
+          if (key.startsWith("option."))
+            assert.equal(params.getAll(key).length, 1);
+        }
+      }
     } finally {
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ id: 1_000_000, method: "Browser.close" }));
+        await Promise.race([
+          new Promise((resolve) => browser.once("exit", resolve)),
+          delay(1500),
+        ]);
+      }
       socket?.close();
-      browser.kill();
+      if (browser.exitCode === null) browser.kill();
       await delay(400);
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
@@ -681,7 +1002,7 @@ test(
         rmSync(profile, {
           recursive: true,
           force: true,
-          maxRetries: 5,
+          maxRetries: 10,
           retryDelay: 200,
         });
       }

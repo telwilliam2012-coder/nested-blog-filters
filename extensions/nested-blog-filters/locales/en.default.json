@@ -1,10 +1,13 @@
 {
   "filters": {
+    "search_label": "Search blog articles",
+    "search_placeholder": "Search articles…",
+    "search_submit": "Search",
     "heading": "Ideas for your kind of celebration",
     "intro": "Find inspiration for your next party. Choose a theme to discover related ideas.",
     "eyebrow": "Inspiration for every celebration",
     "panel_title": "Find your idea",
-    "guide": "Start with a theme, then explore the options that appear. You can choose more than one in each filter.",
+    "guide": "Start with a theme, then explore the options that appear. You can choose only one option in each filter.",
     "choose": "Choose an option",
     "active": "Selected filters",
     "remove": "Remove {{ value }}",
@@ -13,7 +16,7 @@
     "error": "We couldn't load the articles. Try again or open the blog.",
     "empty": "No articles match these filters. Change an option or clear the filters.",
     "unconfigured": "This blog has no saved filter set yet. Configure it in the app to enable filtering.",
-    "results": "Articles found: {{ count }}",
+    "results": "Results found: {{ count }}",
     "page": "Page {{ current }} of {{ total }}",
     "read": "Read article",
     "clear": "Clear filters",
