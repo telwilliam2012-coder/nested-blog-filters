@@ -1,66 +1,62 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { redirect, Form, useActionData, useLoaderData } from "react-router";
-
-import { login } from "../../shopify.server";
-import { loginErrorMessage } from "./error.server";
+import type { LoaderFunctionArgs, MetaFunction } from "react-router";
+import { redirect } from "react-router";
 
 import styles from "./styles.module.css";
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const url = new URL(request.url);
+export const meta: MetaFunction = () => [
+  { title: "Nested Blog Filters & Search" },
+  {
+    name: "description",
+    content:
+      "Organiza y filtra los artículos de tu blog de Shopify con filtros anidados y búsqueda avanzada.",
+  },
+];
 
-  if (url.searchParams.get("shop")) {
-    throw redirect(`/app?${url.searchParams.toString()}`);
+export function loader({ request }: LoaderFunctionArgs) {
+  const url = new URL(request.url);
+  const entersFromShopify =
+    url.searchParams.has("shop") ||
+    url.searchParams.has("host") ||
+    url.searchParams.get("embedded") === "1" ||
+    url.searchParams.has("id_token");
+
+  // Keep Shopify launches on the admin home with their original query context.
+  if (entersFromShopify) {
+    return redirect(`/app${url.search}`, {
+      headers: { "Cache-Control": "no-store" },
+    });
   }
 
-  return { showForm: Boolean(login) };
-};
+  return null;
+}
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const errors = loginErrorMessage(await login(request));
-
-  return { errors };
-};
-
-export default function App() {
-  const { showForm } = useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>();
-  const errors = actionData?.errors;
-
+export default function AppEntry() {
   return (
-    <div className={styles.index}>
+    <main className={styles.index} lang="es">
       <div className={styles.content}>
-        <h1 className={styles.heading}>A short heading about [your app]</h1>
+        <h1 className={styles.heading}>Nested Blog Filters &amp; Search</h1>
         <p className={styles.text}>
-          A tagline about [your app] that describes your value proposition.
+          Organiza y filtra los artículos de tu blog de Shopify con filtros
+          anidados y búsqueda avanzada.
         </p>
-        {showForm && (
-          <Form className={styles.form} method="post">
-            <label className={styles.label}>
-              <span>Shop domain</span>
-              <input className={styles.input} type="text" name="shop" />
-              <span>{errors?.shop ?? "e.g: my-shop-domain.myshopify.com"}</span>
-            </label>
-            <button className={styles.button} type="submit">
-              Log in
-            </button>
-          </Form>
-        )}
         <ul className={styles.list}>
           <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+            <strong>Filtros Anidados:</strong> Organiza tus entradas por
+            categorías, subcategorías y etiquetas estructuradas.
           </li>
           <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+            <strong>Búsqueda Rápida:</strong> Permite a tus usuarios encontrar
+            contenido al instante desde el storefront.
           </li>
           <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+            <strong>Fácil Integración:</strong> Configuración rápida a través
+            del proxy de la app sin modificar código complejo en el tema.
           </li>
         </ul>
+        <footer>
+          <a href="/privacy">Política de privacidad</a>
+        </footer>
       </div>
-    </div>
+    </main>
   );
 }
