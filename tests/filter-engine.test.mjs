@@ -28,6 +28,8 @@ let getFilterHomeOverview;
 let getFilterHomePreview;
 let getStorefrontFilters;
 let handleStorefrontFiltersRequest;
+let storefrontModule;
+let getPlanAccess;
 
 before(async () => {
   directory = mkdtempSync(path.join(tmpdir(), "nested-blog-filters-"));
@@ -45,6 +47,7 @@ before(async () => {
   );
   // Prisma 6 on Windows requires the SQLite file to exist before migrate deploy.
   writeFileSync(path.join(directory, "dev.sqlite"), "");
+  const databaseUrl = `file:${path.join(directory, "dev.sqlite").replaceAll("\\", "/")}`;
   execFileSync(
     process.execPath,
     [
@@ -54,10 +57,15 @@ before(async () => {
       "--schema",
       path.join(directory, "schema.prisma"),
     ],
-    { cwd: root, encoding: "utf8", stdio: "pipe" },
+    {
+      cwd: root,
+      encoding: "utf8",
+      stdio: "pipe",
+      env: { ...process.env, DATABASE_URL: databaseUrl },
+    },
   );
   db = new PrismaClient({
-    datasourceUrl: `file:${path.join(directory, "dev.sqlite").replaceAll("\\", "/")}`,
+    datasourceUrl: databaseUrl,
   });
   // Vite resolves the same TypeScript server module as the application.
   // No new test framework or TypeScript loader dependency is needed.
@@ -78,12 +86,37 @@ before(async () => {
   ({ getFilterHomeOverview, getFilterHomePreview } = await vite.ssrLoadModule(
     "/app/services/filter-home.server.ts",
   ));
-  ({ getStorefrontFilters, handleStorefrontFiltersRequest } =
-    await vite.ssrLoadModule("/app/services/storefront-filters.server.ts"));
+  storefrontModule = await vite.ssrLoadModule(
+    "/app/services/storefront-filters.server.ts",
+  );
+  ({ getPlanAccess } = await vite.ssrLoadModule("/app/billing-plans.ts"));
+  getStorefrontFilters = (shop, params, database) =>
+    storefrontModule.getStorefrontFilters(
+      shop,
+      params,
+      getPlanAccess("Premium"),
+      database,
+    );
+  handleStorefrontFiltersRequest = (request, authenticate, database) =>
+    storefrontModule.handleStorefrontFiltersRequest(
+      request,
+      async (proxyRequest) => ({
+        ...(await authenticate(proxyRequest)),
+        admin: {},
+      }),
+      database,
+      async () => getPlanAccess("Premium"),
+    );
 
   await db.filterSet.createMany({
     data: [
-      { id: "main", shop, blogId: "gid://shopify/Blog/1", name: "Principal" },
+      {
+        id: "main",
+        shop,
+        blogId: "gid://shopify/Blog/1",
+        name: "Principal",
+        createdAt: new Date("2020-01-01T00:00:00Z"),
+      },
       { id: "other", shop, blogId: "gid://shopify/Blog/2", name: "Otro blog" },
       {
         id: "foreign",
@@ -676,6 +709,100 @@ test("proxy uses the authenticated shop, ignores spoofed shop and filter-set IDs
   );
   assert.equal(badQuery.status, 400);
   assert.deepEqual(await badQuery.json(), { error: "INVALID_PAGINATION" });
+});
+
+test("Pro storefront activates only its first blog and three filters without deleting Premium data", async () => {
+  await db.filter.create({
+    data: {
+      id: "plan-extra",
+      filterSetId: "main",
+      key: "extra",
+      label: "Extra",
+      position: 40,
+    },
+  });
+  try {
+    const params = new URLSearchParams({ blogId: "gid://shopify/Blog/1" });
+    const pro = await storefrontModule.getStorefrontFilters(
+      shop,
+      params,
+      getPlanAccess("Pro"),
+      db,
+    );
+    const premium = await storefrontModule.getStorefrontFilters(
+      shop,
+      params,
+      getPlanAccess("Premium"),
+      db,
+    );
+    assert.equal(pro.filters.length, 3);
+    assert.equal(premium.filters.length, 4);
+    assert.equal(await db.filter.count({ where: { filterSetId: "main" } }), 4);
+    assert.deepEqual(
+      await storefrontModule.getStorefrontFilters(
+        shop,
+        new URLSearchParams({ blogId: "gid://shopify/Blog/2" }),
+        getPlanAccess("Pro"),
+        db,
+      ),
+      { status: "unconfigured" },
+    );
+    assert.equal(
+      (
+        await storefrontModule.getStorefrontFilters(
+          shop,
+          new URLSearchParams({ blogId: "gid://shopify/Blog/2" }),
+          getPlanAccess("Premium"),
+          db,
+        )
+      ).status,
+      "ready",
+    );
+    params.append("option.plan-extra", "forged-option");
+    await assert.rejects(
+      storefrontModule.getStorefrontFilters(
+        shop,
+        params,
+        getPlanAccess("Pro"),
+        db,
+      ),
+      (error) => error.code === "INVALID_SELECTION",
+    );
+  } finally {
+    await db.filter.delete({ where: { id: "plan-extra" } });
+  }
+});
+
+test("a signed shop request cannot claim a paid plan through URL parameters", async () => {
+  const request = new Request(
+    "https://app.test/proxy/nested-filters?blogId=gid://shopify/Blog/1&plan=Premium&plan_handle=premium",
+  );
+  const noDatabase = new Proxy(
+    {},
+    {
+      get() {
+        throw new Error("Unpaid storefront must not read database");
+      },
+    },
+  );
+  const response = await storefrontModule.handleStorefrontFiltersRequest(
+    request,
+    async () => ({ session: { shop }, admin: {} }),
+    noDatabase,
+    async () => null,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { status: "unconfigured" });
+  const unavailable = await storefrontModule.handleStorefrontFiltersRequest(
+    request,
+    async () => ({ session: { shop }, admin: {} }),
+    noDatabase,
+    async () => {
+      throw new Error("Subscription verification unavailable");
+    },
+  );
+  assert.equal(unavailable.status, 503);
+  assert.deepEqual(await unavailable.json(), { error: "FILTERS_UNAVAILABLE" });
 });
 
 test("deleting a filter set cascades without affecting another blog or sessions", async () => {

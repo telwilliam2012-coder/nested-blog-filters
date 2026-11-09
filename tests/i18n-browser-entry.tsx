@@ -9,6 +9,20 @@ import { FilterSetEditor } from "../app/components/filter-set-editor";
 import { ArticleManager } from "../app/components/article-manager";
 import { AdminSupportProvider } from "../app/components/admin-support";
 import { HelpContents } from "../app/components/help-content";
+import { getPlanAccess } from "../app/billing-plans";
+
+// This fixture replaces Polaris elements without loading the CDN. Preserve
+// their block/inline layout boundaries so unstyled custom tags don't inflate
+// the mobile layout viewport around the real help dialog being exercised.
+const fixtureStyle = document.createElement("style");
+fixtureStyle.textContent = `
+  s-page, s-app-nav, s-stack, s-section, s-grid, s-box, s-banner, s-paragraph,
+  s-text-field, s-email-field, s-text-area, s-select, s-unordered-list {
+    display: block;
+  }
+  s-button, s-link { display: inline-block; }
+`;
+document.head.append(fixtureStyle);
 
 class ValueElement extends HTMLElement {
   get value() {
@@ -38,6 +52,7 @@ const params = new URL(location.href).searchParams;
 const shop = params.get("shop") ?? "one.myshopify.com";
 const initialLocale = normalizeAdminLocale(params.get("locale")) ?? "es";
 const manager = {
+  planAccess: getPlanAccess("Premium"),
   sets: [{ id: "set", name: "Mi conjunto" }],
   loadError: null,
   management: {
@@ -99,6 +114,7 @@ const router = createMemoryRouter(
           path: "filters",
           element: (
             <FilterSetEditor
+              planAccess={getPlanAccess("Premium")}
               initial={{
                 name: "Mi conjunto",
                 blogId: "blog",

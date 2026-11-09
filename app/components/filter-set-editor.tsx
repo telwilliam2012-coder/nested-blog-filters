@@ -2,11 +2,15 @@ import { useState } from "react";
 import { useAdminI18n } from "../i18n/admin-i18n";
 import { filterKeyError, normalizeFilterKey } from "../filter-key";
 import { celebrationFilters } from "../filter-presets";
+import type { AppPlanAccess } from "../billing-plans";
 import type { FilterSetDraft } from "../services/filter-admin.server";
 
 type Props = {
   initial: FilterSetDraft;
   blogs: Array<{ id: string; title: string }>;
+  planAccess: AppPlanAccess;
+  canCreate?: boolean;
+  storefrontInactive?: boolean;
   saving: boolean;
   error?: string;
   saved?: boolean;
@@ -19,6 +23,9 @@ type Props = {
 export function FilterSetEditor({
   initial,
   blogs,
+  planAccess,
+  canCreate = true,
+  storefrontInactive = false,
   saving,
   error,
   saved,
@@ -30,7 +37,13 @@ export function FilterSetEditor({
   const { t } = useAdminI18n();
   const [draft, setDraft] = useState(initial);
   const [saveAttempted, setSaveAttempted] = useState(false);
-  const disabled = saving || locked;
+  const creationBlocked = !setId && !canCreate;
+  const disabled = saving || locked || creationBlocked;
+  const allowedFilterCount = Math.max(
+    planAccess.maxFilters,
+    setId ? initial.filters.length : 0,
+  );
+  const presetFilters = celebrationFilters(draft.filters);
   const normalizedKeys = draft.filters.map((filter) =>
     filter.id ? filter.key : normalizeFilterKey(filter.key),
   );
@@ -105,6 +118,42 @@ export function FilterSetEditor({
           </s-paragraph>
         </s-banner>
       )}
+      {creationBlocked && (
+        <s-banner heading={t("Límite de blogs del plan")} tone="warning">
+          <s-paragraph>
+            {t(
+              "Tu plan permite configurar un blog. Cambia a Premium para añadir más blogs.",
+            )}
+          </s-paragraph>
+          <s-button href="/app/billing">{t("Ver planes")}</s-button>
+        </s-banner>
+      )}
+      {storefrontInactive && (
+        <s-banner
+          heading={t("Conjunto conservado e inactivo en la tienda")}
+          tone="warning"
+        >
+          <s-paragraph>
+            {t(
+              "Pro mantiene activo el primer blog configurado. Este conjunto se conserva y puedes editarlo o sincronizarlo; vuelve a activarlo en la tienda con Premium.",
+            )}
+          </s-paragraph>
+          <s-button href="/app/billing">{t("Ver planes")}</s-button>
+        </s-banner>
+      )}
+      {initial.filters.length > planAccess.maxFilters && (
+        <s-banner
+          heading={t("Filtros extra conservados e inactivos")}
+          tone="warning"
+        >
+          <s-paragraph>
+            {t(
+              "Tus filtros guardados se conservan y puedes editarlos o reducir su cantidad. Pro muestra solo los primeros 3 filtros en la tienda; Premium permite activar los filtros adicionales.",
+            )}
+          </s-paragraph>
+          <s-button href="/app/billing">{t("Ver planes")}</s-button>
+        </s-banner>
+      )}
       {locked && (
         <s-banner heading={t("Importación en curso")} tone="warning">
           <s-paragraph>
@@ -164,11 +213,11 @@ export function FilterSetEditor({
                 )}
               </s-paragraph>
               <s-button
-                disabled={disabled || draft.filters.length > 7}
+                disabled={disabled || presetFilters.length > allowedFilterCount}
                 onClick={() =>
                   setDraft({
                     ...draft,
-                    filters: celebrationFilters(draft.filters),
+                    filters: presetFilters,
                   })
                 }
               >
@@ -487,7 +536,7 @@ export function FilterSetEditor({
           ))}
           <s-stack direction="inline" gap="base">
             <s-button
-              disabled={disabled || draft.filters.length >= 10}
+              disabled={disabled || draft.filters.length >= allowedFilterCount}
               onClick={() =>
                 setDraft({
                   ...draft,
@@ -500,6 +549,12 @@ export function FilterSetEditor({
             >
               {t("Añadir filtro")}
             </s-button>
+            {draft.filters.length >= allowedFilterCount &&
+              planAccess.plan === "Pro" && (
+                <s-link href="/app/billing">
+                  {t("Premium permite añadir más filtros")}
+                </s-link>
+              )}
             <s-button
               variant="primary"
               type="submit"

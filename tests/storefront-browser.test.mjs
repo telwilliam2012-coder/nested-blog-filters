@@ -519,6 +519,89 @@ test(
       await waitFor(
         "getComputedStyle(document.querySelector('#one .nbf__filter--selected .nbf__step')).backgroundColor === 'rgb(154, 52, 18)' && getComputedStyle(document.querySelector('#one .nbf__search-submit')).backgroundColor === 'rgb(29, 78, 216)'",
       );
+      await evaluate(`{
+        document.querySelector('#one input:checked').closest('details').querySelector('summary').click();
+        document.querySelector('#branding-preview').textContent += \`#one {
+          --nbf-text: #27272a;
+          --nbf-muted-text: #52525b;
+          --nbf-surface-bg: #fafafa;
+          --nbf-soft-bg: #f4f4f5;
+          --nbf-border-color: #a1a1aa;
+          --nbf-search-bg: #fff7ed;
+          --nbf-search-button-bg: #c2410c;
+          --nbf-search-button-text: #ffedd5;
+          --nbf-selected-bg: #3b0764;
+          --nbf-selected-text: #faf5ff;
+          --nbf-chip-bg: #312e81;
+          --nbf-chip-text: #eef2ff;
+        }\`;
+        document.querySelector('#one [data-search-input]').focus();
+      }`);
+      await waitFor(
+        "getComputedStyle(document.querySelector('#one .nbf__search')).backgroundColor === 'rgb(255, 247, 237)' && getComputedStyle(document.querySelector('#one .nbf__chip')).backgroundColor === 'rgb(49, 46, 129)' && getComputedStyle(document.querySelector('#one .nbf__search-submit')).backgroundColor === 'rgb(194, 65, 12)' && getComputedStyle(document.querySelector('#one .nbf__option:has(input:checked)')).backgroundColor === 'rgb(59, 7, 100)' && getComputedStyle(document.querySelector('#one .nbf__option:has(input:checked)')).color === 'rgb(250, 245, 255)'",
+      );
+      assert.deepEqual(
+        await evaluate(`(() => {
+          const color = (selector, property = 'color', pseudo = null) =>
+            getComputedStyle(document.querySelector(selector), pseudo)[property];
+          return [
+            color('#one', 'backgroundColor'),
+            color('#one [data-search-input]'),
+            color('#one [data-search-input]', 'color', '::placeholder'),
+            color('#one .nbf__search-icon'),
+            color('#one .nbf__search-submit'),
+            color('#one .nbf__filter--selected .nbf__trigger', 'backgroundColor'),
+            color('#one .nbf__filter--selected .nbf__filter-value'),
+            color('#one .nbf__filter--selected .nbf__filter-label'),
+            color('#one .nbf__filter--selected .nbf__chevron', 'borderTopColor'),
+            color('#one .nbf__option:has(input:checked)', 'backgroundColor'),
+            color('#one .nbf__option:has(input:checked)'),
+            color('#one .nbf__chip'),
+            color('#one .nbf__chip-label'),
+            color('#one .nbf__chip-remove'),
+            color('#one .nbf__chip', 'borderTopColor'),
+            color('#one .nbf__menu', 'backgroundColor'),
+            color('#two .nbf__search', 'backgroundColor'),
+            color('#two [data-search-input]'),
+          ];
+        })()`),
+        [
+          "rgb(250, 250, 250)",
+          "rgb(39, 39, 42)",
+          "rgb(82, 82, 91)",
+          "rgb(82, 82, 91)",
+          "rgb(255, 237, 213)",
+          "rgb(59, 7, 100)",
+          "rgb(250, 245, 255)",
+          "rgb(250, 245, 255)",
+          "rgb(250, 245, 255)",
+          "rgb(59, 7, 100)",
+          "rgb(250, 245, 255)",
+          "rgb(238, 242, 255)",
+          "rgb(238, 242, 255)",
+          "rgb(238, 242, 255)",
+          "rgb(161, 161, 170)",
+          "rgb(250, 250, 250)",
+          "rgb(243, 247, 245)",
+          "rgb(32, 51, 46)",
+        ],
+      );
+      await capture("storefront-search-selection-colors.png");
+      await evaluate(`{
+        document.querySelector('#one input:checked').closest('details').querySelector('summary').click();
+        document.querySelector('#one [data-search-input]').blur();
+        document.querySelector('#branding-preview').textContent =
+          '#one { --nbf-soft-bg: #fef3c7; --nbf-text: #1e1b4b; --nbf-accent: #9f1239; }';
+      }`);
+      await waitFor(
+        "getComputedStyle(document.querySelector('#one .nbf__search')).backgroundColor === 'rgb(254, 243, 199)' && getComputedStyle(document.querySelector('#one .nbf__chip')).backgroundColor === 'rgb(254, 243, 199)' && getComputedStyle(document.querySelector('#one .nbf__search-submit')).backgroundColor === 'rgb(159, 18, 57)'",
+      );
+      assert.equal(
+        await evaluate(
+          "getComputedStyle(document.querySelector('#one .nbf__chip')).color",
+        ),
+        "rgb(30, 27, 75)",
+      );
       assert.equal(requests, beforeColorChange);
       await evaluate("document.querySelector('#branding-preview').remove()");
       await waitFor(

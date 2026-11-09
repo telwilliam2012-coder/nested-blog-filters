@@ -41,6 +41,11 @@ if (host === "localhost") {
 
 export default defineConfig({
   server: {
+    host: "127.0.0.1",
+    strictPort: true,
+    watch: {
+      ignored: ["**/artifacts/**"],
+    },
     allowedHosts: [host],
     cors: {
       preflightContinue: true,

@@ -21,6 +21,7 @@ const shop = "admin-test.myshopify.com";
 const blogId = "gid://shopify/Blog/100";
 const type = "list.single_line_text_field";
 let directory, db, vite, filters, articles, engine, setId;
+let proAccess, premiumAccess, filterServices, articleServices;
 const definitions = new Map();
 const remote = new Map();
 let failPage = false,
@@ -187,6 +188,7 @@ before(async () => {
     readFileSync(path.join(root, "prisma/schema.prisma")),
   );
   writeFileSync(path.join(directory, "dev.sqlite"), "");
+  const databaseUrl = `file:${path.join(directory, "dev.sqlite").replaceAll("\\", "/")}`;
   execFileSync(
     process.execPath,
     [
@@ -196,10 +198,14 @@ before(async () => {
       "--schema",
       path.join(directory, "schema.prisma"),
     ],
-    { cwd: root, stdio: "pipe" },
+    {
+      cwd: root,
+      stdio: "pipe",
+      env: { ...process.env, DATABASE_URL: databaseUrl },
+    },
   );
   db = new PrismaClient({
-    datasourceUrl: `file:${path.join(directory, "dev.sqlite").replaceAll("\\", "/")}`,
+    datasourceUrl: databaseUrl,
   });
   vite = await createServer({
     root,
@@ -211,8 +217,33 @@ before(async () => {
     },
     optimizeDeps: { noDiscovery: true, include: [] },
   });
-  filters = await vite.ssrLoadModule("/app/services/filter-admin.server.ts");
-  articles = await vite.ssrLoadModule("/app/services/article-admin.server.ts");
+  const { getPlanAccess } = await vite.ssrLoadModule("/app/billing-plans.ts");
+  proAccess = getPlanAccess("Pro");
+  premiumAccess = getPlanAccess("Premium");
+  filterServices = await vite.ssrLoadModule(
+    "/app/services/filter-admin.server.ts",
+  );
+  articleServices = await vite.ssrLoadModule(
+    "/app/services/article-admin.server.ts",
+  );
+  // Existing integration scenarios exercise all editor features with Premium.
+  filters = {
+    ...filterServices,
+    saveFilterSet: (admin, shop, id, input, db) =>
+      filterServices.saveFilterSet(admin, shop, id, input, premiumAccess, db),
+  };
+  articles = {
+    ...articleServices,
+    editArticleAttributes: (admin, shop, id, input, db) =>
+      articleServices.editArticleAttributes(
+        admin,
+        shop,
+        id,
+        input,
+        premiumAccess,
+        db,
+      ),
+  };
   engine = await vite.ssrLoadModule("/app/services/filter-engine.server.ts");
   for (let index = 0; index < 30; index++) {
     const id = `gid://shopify/Article/${1000 + index}`;
@@ -1193,4 +1224,254 @@ test("hierarchy validation rejects cycles, missing parents and unknown parent op
       /filtro anterior/,
     );
   }
+});
+
+function planDraft(blog = blogId, filterCount = 3) {
+  return {
+    name: "Plan limits",
+    blogId: blog,
+    revision: 0,
+    filters: Array.from({ length: filterCount }, (_, index) => ({
+      key: `filter_${index}`,
+      label: `Filter ${index}`,
+      source: "tag",
+      options: [],
+    })),
+  };
+}
+
+function planAdmin() {
+  const calls = [];
+  return {
+    calls,
+    async graphql(query, { variables }) {
+      calls.push(query);
+      assert.ok(query.includes("query FilterBlog("));
+      return {
+        json: async () => ({
+          data: {
+            blog: { id: variables.id, title: "Plan blog", handle: "plan" },
+          },
+        }),
+      };
+    },
+  };
+}
+
+test("Pro rejects extra blogs and filters before calling Shopify", async () => {
+  const client = planAdmin();
+  const planShop = "quota-pro.myshopify.com";
+  await assert.rejects(
+    filterServices.saveFilterSet(
+      client,
+      planShop,
+      null,
+      planDraft(blogId, 4),
+      proAccess,
+      db,
+    ),
+    { status: 403 },
+  );
+  assert.equal(client.calls.length, 0);
+  const id = await filterServices.saveFilterSet(
+    client,
+    planShop,
+    null,
+    planDraft(),
+    proAccess,
+    db,
+  );
+  const callsBefore = client.calls.length;
+  await assert.rejects(
+    filterServices.saveFilterSet(
+      client,
+      planShop,
+      null,
+      planDraft("gid://shopify/Blog/101"),
+      proAccess,
+      db,
+    ),
+    { status: 403 },
+  );
+  assert.equal(client.calls.length, callsBefore);
+  const usage = await filterServices.getFilterPlanUsage(
+    planShop,
+    proAccess,
+    db,
+  );
+  assert.equal(usage.canCreate, false);
+  assert.deepEqual(usage.activeFilterSetIds, [id]);
+  assert.equal(await db.filterSet.count({ where: { shop: planShop } }), 1);
+});
+
+test("Premium supports multiple blogs and ten filters; downgrade preserves data without growth", async () => {
+  const client = planAdmin();
+  const planShop = "quota-downgrade.myshopify.com";
+  const id = await filterServices.saveFilterSet(
+    client,
+    planShop,
+    null,
+    planDraft(blogId, 10),
+    premiumAccess,
+    db,
+  );
+  const second = await filterServices.saveFilterSet(
+    client,
+    planShop,
+    null,
+    planDraft("gid://shopify/Blog/102", 2),
+    premiumAccess,
+    db,
+  );
+  await db.filterSet.update({
+    where: { id },
+    data: { createdAt: new Date("2020-01-01") },
+  });
+  const original = await filterServices.getFilterSet(planShop, id, db);
+  const updated = draft(original);
+  updated.name = "Retained after downgrade";
+  await filterServices.saveFilterSet(
+    client,
+    planShop,
+    id,
+    updated,
+    proAccess,
+    db,
+  );
+  assert.equal(
+    (await filterServices.getFilterSet(planShop, id, db)).filters.length,
+    10,
+  );
+  assert.ok(await filterServices.getFilterSet(planShop, second, db));
+  const usage = await filterServices.getFilterPlanUsage(
+    planShop,
+    proAccess,
+    db,
+  );
+  assert.equal(usage.overBlogLimit, true);
+  assert.deepEqual(usage.activeFilterSetIds, [id]);
+  const reduced = draft(await filterServices.getFilterSet(planShop, id, db));
+  reduced.filters = reduced.filters.slice(0, 4);
+  await filterServices.saveFilterSet(
+    client,
+    planShop,
+    id,
+    reduced,
+    proAccess,
+    db,
+  );
+  const growth = draft(await filterServices.getFilterSet(planShop, id, db));
+  growth.filters.push({
+    key: "another_filter",
+    label: "Another",
+    source: "tag",
+    options: [],
+  });
+  const callsBefore = client.calls.length;
+  await assert.rejects(
+    filterServices.saveFilterSet(client, planShop, id, growth, proAccess, db),
+    { status: 403 },
+  );
+  assert.equal(client.calls.length, callsBefore);
+  assert.equal(await db.filterSet.count({ where: { shop: planShop } }), 2);
+});
+
+test(
+  "simultaneous Pro creates cannot reserve two blog slots",
+  { timeout: 45000 },
+  async () => {
+    const client = planAdmin();
+    const planShop = "quota-concurrent.myshopify.com";
+    const results = await Promise.allSettled([
+      filterServices.saveFilterSet(
+        client,
+        planShop,
+        null,
+        planDraft(blogId),
+        proAccess,
+        db,
+      ),
+      filterServices.saveFilterSet(
+        client,
+        planShop,
+        null,
+        planDraft("gid://shopify/Blog/103"),
+        proAccess,
+        db,
+      ),
+    ]);
+    assert.equal(
+      results.filter((result) => result.status === "fulfilled").length,
+      1,
+    );
+    assert.equal(await db.filterSet.count({ where: { shop: planShop } }), 1);
+  },
+);
+
+test("serialization conflicts retry the complete quota transaction", async () => {
+  let attempts = 0;
+  const retryDb = new Proxy(db, {
+    get(target, key) {
+      if (key === "$transaction")
+        return async (callback, options) => {
+          attempts++;
+          assert.equal(options.isolationLevel, "Serializable");
+          if (attempts === 1)
+            throw Object.assign(new Error("Serialization conflict"), {
+              code: "P2034",
+            });
+          return target.$transaction(callback, options);
+        };
+      return Reflect.get(target, key);
+    },
+  });
+  await filterServices.saveFilterSet(
+    planAdmin(),
+    "quota-retry.myshopify.com",
+    null,
+    planDraft(),
+    proAccess,
+    retryDb,
+  );
+  assert.equal(attempts, 2);
+});
+
+test("forged Pro bulk requests fail before reading or mutating Shopify", async () => {
+  const client = planAdmin();
+  await assert.rejects(
+    articleServices.editArticleAttributes(
+      client,
+      "bulk-pro.myshopify.com",
+      "set",
+      {
+        revision: 0,
+        articleIds: ["article-a", "article-b"],
+        filterId: "filter",
+        optionIds: [],
+        mode: "replace",
+        digests: {},
+      },
+      proAccess,
+      db,
+    ),
+    { status: 403 },
+  );
+  assert.equal(client.calls.length, 0);
+});
+
+test("Pro retains individual article editing", async () => {
+  const fixture = await tagEditFixture(1);
+  const input = await fixture.input("replace", ["Halloween"]);
+  assert.equal(
+    await articleServices.editArticleAttributes(
+      admin,
+      fixture.shop,
+      fixture.id,
+      input,
+      proAccess,
+      db,
+    ),
+    1,
+  );
+  assert.ok(remote.get(fixture.ids[0]).tags.includes("Halloween"));
 });

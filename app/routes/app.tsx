@@ -8,9 +8,15 @@ import { AdminI18nProvider } from "../i18n/admin-i18n";
 import { AdminNavigation } from "../components/admin-navigation";
 import { requestAdminLocale } from "../i18n/locale";
 import { AdminSupportProvider } from "../components/admin-support";
+import { requireActiveBilling } from "../services/billing.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const context = await authenticate.admin(request);
+  const pathname = new URL(request.url).pathname.replace(/\/$/, "");
+  if (pathname !== "/app/billing" && pathname !== "/app/help") {
+    await requireActiveBilling(context);
+  }
+  const { session } = context;
 
   // eslint-disable-next-line no-undef
   return {

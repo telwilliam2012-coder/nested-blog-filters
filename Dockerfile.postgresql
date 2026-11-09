@@ -1,0 +1,32 @@
+FROM node:22-alpine AS build
+RUN apk add --no-cache openssl
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev
+COPY . .
+
+# Schema checks are offline. The build-only URL is never contacted by generate.
+RUN node --test tests/postgresql-deployment.test.mjs \
+    && DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build \
+       node node_modules/prisma/build/index.js generate --schema prisma/postgresql/schema.prisma \
+    && npm run build \
+    && npm prune --omit=dev --ignore-scripts \
+    && npm cache clean --force
+
+FROM node:22-alpine AS runtime
+RUN apk add --no-cache openssl
+WORKDIR /app
+ENV NODE_ENV=production \
+    HOST=0.0.0.0 \
+    PORT=3000
+
+COPY --from=build /app/package.json /app/package-lock.json ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/build ./build
+COPY --from=build /app/prisma/postgresql ./prisma/postgresql
+COPY --from=build /app/scripts/start-postgresql.mjs ./scripts/start-postgresql.mjs
+COPY --from=build /app/scripts/inspect-postgresql.mjs ./scripts/inspect-postgresql.mjs
+COPY --from=build /app/docs/deployment-postgresql.md ./docs/deployment-postgresql.md
+EXPOSE 3000
+CMD ["node", "scripts/start-postgresql.mjs"]

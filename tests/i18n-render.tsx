@@ -12,10 +12,12 @@ import { BlogHome } from "../app/components/blog-home";
 import { FilterSetEditor } from "../app/components/filter-set-editor";
 import { ArticleManager } from "../app/components/article-manager";
 import { AdminPageError } from "../app/components/admin-page-error";
+import { getPlanAccess } from "../app/billing-plans";
 export { adminHeaders } from "../app/components/admin-page-error";
 
 export async function renderAdminViews(locale: AdminLocale) {
   const editor = {
+    planAccess: getPlanAccess("Premium"),
     initial: {
       name: "Mi conjunto",
       blogId: "blog",
@@ -34,6 +36,7 @@ export async function renderAdminViews(locale: AdminLocale) {
     onSave: () => {},
   } satisfies ComponentProps<typeof FilterSetEditor>;
   const manager = {
+    planAccess: getPlanAccess("Premium"),
     sets: [{ id: "set", name: "Mi conjunto" }],
     loadError: null,
     management: {

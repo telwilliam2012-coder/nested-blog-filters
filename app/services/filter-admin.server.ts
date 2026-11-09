@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import type { AppPlanAccess } from "../billing-plans";
 import prisma from "../db.server";
 import { filterKeyError, normalizeFilterKey } from "../filter-key";
 import { matchingTagValues } from "../filter-hierarchy";
@@ -54,6 +55,39 @@ export async function getFilterSet(
       404,
     );
   return set;
+}
+
+export async function getFilterPlanUsage(
+  shop: string,
+  planAccess: AppPlanAccess,
+  db: PrismaClient = prisma,
+) {
+  const [filterSetCount, activeSets] = await Promise.all([
+    db.filterSet.count({ where: { shop } }),
+    planAccess.maxBlogs === null
+      ? null
+      : db.filterSet.findMany({
+          where: { shop },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          take: planAccess.maxBlogs,
+          select: { id: true },
+        }),
+  ]);
+  return {
+    filterSetCount,
+    canCreate:
+      planAccess.maxBlogs === null || filterSetCount < planAccess.maxBlogs,
+    overBlogLimit:
+      planAccess.maxBlogs !== null && filterSetCount > planAccess.maxBlogs,
+    activeFilterSetIds: activeSets?.map((set) => set.id) ?? null,
+  };
+}
+
+function blogPlanLimit() {
+  return new AdminInputError(
+    "Tu plan permite configurar un blog. Cambia a Premium para añadir más blogs.",
+    403,
+  );
 }
 
 function text(value: unknown, label: string, max = 100) {
@@ -189,10 +223,31 @@ export async function saveFilterSet(
   shop: string,
   id: string | null,
   input: unknown,
+  planAccess: AppPlanAccess,
   db: PrismaClient = prisma,
 ) {
+  if (!planAccess)
+    throw new AdminInputError(
+      "No se pudo verificar el plan de la tienda.",
+      403,
+    );
   const draft = parseFilterDraft(input);
   const existing = id ? await getFilterSet(shop, id, db) : null;
+  const allowedFilterCount = Math.max(
+    planAccess.maxFilters,
+    existing?.filters.length ?? 0,
+  );
+  if (draft.filters.length > allowedFilterCount)
+    throw new AdminInputError(
+      "Tu plan permite hasta 3 filtros por blog. Cambia a Premium para añadir más filtros.",
+      403,
+    );
+  if (
+    !existing &&
+    planAccess.maxBlogs !== null &&
+    (await db.filterSet.count({ where: { shop } })) >= planAccess.maxBlogs
+  )
+    throw blogPlanLimit();
   if (existing && (existing.revision !== draft.revision || existing.sync))
     throw new AdminInputError(
       "El conjunto cambió o tiene una importación en curso. Recarga la página.",
@@ -228,131 +283,147 @@ export async function saveFilterSet(
       .map((filter) => ({ ...filter, id: filter.id ?? "" })),
   );
 
-  return db.$transaction(
-    async (tx) => {
-      let filterSetId: string;
-      if (existing) {
-        const changed = await tx.filterSet.updateMany({
-          where: {
-            id: existing.id,
-            shop,
-            revision: draft.revision,
-            sync: { is: null },
-          },
-          data: { name: draft.name, revision: { increment: 1 } },
-        });
-        if (changed.count !== 1)
-          throw new AdminInputError(
-            "El conjunto cambió mientras guardabas. Recarga y revisa los cambios.",
-            409,
-          );
-        const current = await tx.filterSet.findUniqueOrThrow({
-          where: { id: existing.id },
-          include: filterSetInclude,
-        });
-        for (const old of current.filters) {
-          const next = draft.filters.find((item) => item.id === old.id);
-          const removed = old.options.filter(
-            (option) => !next?.options.some((item) => item.id === option.id),
-          );
-          if (removed.some((option) => option._count.articles > 0))
-            throw new AdminInputError(
-              "Quita las asignaciones de los artículos antes de eliminar filtros u opciones que estén en uso.",
-              409,
-            );
-          if (!next) await tx.filter.delete({ where: { id: old.id } });
-          else if (removed.length)
-            await tx.filterOption.deleteMany({
+  // Serializable predicate reads prevent two simultaneous creates for different
+  // blogs from both consuming the last available slot for this shop.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await db.$transaction(
+        async (tx) => {
+          let filterSetId: string;
+          if (existing) {
+            const changed = await tx.filterSet.updateMany({
               where: {
-                filterId: old.id,
-                id: { in: removed.map((option) => option.id) },
+                id: existing.id,
+                shop,
+                revision: draft.revision,
+                sync: { is: null },
               },
+              data: { name: draft.name, revision: { increment: 1 } },
             });
-        }
-        filterSetId = existing.id;
-      } else {
-        filterSetId = (
-          await tx.filterSet.create({
-            data: { shop, blogId: draft.blogId, name: draft.name },
-          })
-        ).id;
-      }
-      for (const [position, filter] of draft.filters.entries()) {
-        const saved = filter.id
-          ? await tx.filter.update({
-              where: { id: filter.id },
-              data: {
-                label: filter.label,
-                position,
-                source: filter.source,
-                parentKey: filter.parentKey,
-                parentValues: JSON.stringify(filter.parentValues),
-              },
-            })
-          : await tx.filter.create({
-              data: {
-                filterSetId,
-                key: filter.key,
-                label: filter.label,
-                position,
-                source: filter.source,
-                parentKey: filter.parentKey,
-                parentValues: JSON.stringify(filter.parentValues),
-              },
+            if (changed.count !== 1)
+              throw new AdminInputError(
+                "El conjunto cambió mientras guardabas. Recarga y revisa los cambios.",
+                409,
+              );
+            const current = await tx.filterSet.findUniqueOrThrow({
+              where: { id: existing.id },
+              include: filterSetInclude,
             });
-        for (const [optionPosition, option] of filter.options.entries()) {
-          if (option.id)
-            await tx.filterOption.update({
-              where: { id: option.id },
-              data: { label: option.label, position: optionPosition },
-            });
-          else
-            await tx.filterOption.create({
-              data: {
-                filterSetId,
-                filterId: saved.id,
-                value: option.value,
-                label: option.label,
-                position: optionPosition,
-              },
-            });
-        }
-        if (filter.source === "tag") {
-          const options = await tx.filterOption.findMany({
-            where: { filterId: saved.id },
-          });
-          await tx.articleOption.deleteMany({
-            where: { filterSetId, option: { filterId: saved.id } },
-          });
-          const articles = await tx.article.findMany({
-            where: { filterSetId },
-            select: { id: true, tags: true },
-          });
-          for (const article of articles) {
-            const values = new Set(
-              matchingTagValues(JSON.parse(article.tags), options),
-            );
-            const data = options
-              .filter((option) => values.has(option.value))
-              .map((option) => ({
-                articleId: article.id,
-                filterOptionId: option.id,
-                filterSetId,
-              }));
-            if (data.length) await tx.articleOption.createMany({ data });
+            for (const old of current.filters) {
+              const next = draft.filters.find((item) => item.id === old.id);
+              const removed = old.options.filter(
+                (option) =>
+                  !next?.options.some((item) => item.id === option.id),
+              );
+              if (removed.some((option) => option._count.articles > 0))
+                throw new AdminInputError(
+                  "Quita las asignaciones de los artículos antes de eliminar filtros u opciones que estén en uso.",
+                  409,
+                );
+              if (!next) await tx.filter.delete({ where: { id: old.id } });
+              else if (removed.length)
+                await tx.filterOption.deleteMany({
+                  where: {
+                    filterId: old.id,
+                    id: { in: removed.map((option) => option.id) },
+                  },
+                });
+            }
+            filterSetId = existing.id;
+          } else {
+            if (
+              planAccess.maxBlogs !== null &&
+              (await tx.filterSet.count({ where: { shop } })) >=
+                planAccess.maxBlogs
+            )
+              throw blogPlanLimit();
+            filterSetId = (
+              await tx.filterSet.create({
+                data: { shop, blogId: draft.blogId, name: draft.name },
+              })
+            ).id;
           }
-        } else if (
-          existing?.filters.some(
-            (old) => old.id === saved.id && old.source === "tag",
-          )
-        ) {
-          await tx.articleOption.deleteMany({
-            where: { filterSetId, option: { filterId: saved.id } },
-          });
-        }
-      }
-      return filterSetId;
-    },
-    { timeout: 20_000 },
-  );
+          for (const [position, filter] of draft.filters.entries()) {
+            const saved = filter.id
+              ? await tx.filter.update({
+                  where: { id: filter.id },
+                  data: {
+                    label: filter.label,
+                    position,
+                    source: filter.source,
+                    parentKey: filter.parentKey,
+                    parentValues: JSON.stringify(filter.parentValues),
+                  },
+                })
+              : await tx.filter.create({
+                  data: {
+                    filterSetId,
+                    key: filter.key,
+                    label: filter.label,
+                    position,
+                    source: filter.source,
+                    parentKey: filter.parentKey,
+                    parentValues: JSON.stringify(filter.parentValues),
+                  },
+                });
+            for (const [optionPosition, option] of filter.options.entries()) {
+              if (option.id)
+                await tx.filterOption.update({
+                  where: { id: option.id },
+                  data: { label: option.label, position: optionPosition },
+                });
+              else
+                await tx.filterOption.create({
+                  data: {
+                    filterSetId,
+                    filterId: saved.id,
+                    value: option.value,
+                    label: option.label,
+                    position: optionPosition,
+                  },
+                });
+            }
+            if (filter.source === "tag") {
+              const options = await tx.filterOption.findMany({
+                where: { filterId: saved.id },
+              });
+              await tx.articleOption.deleteMany({
+                where: { filterSetId, option: { filterId: saved.id } },
+              });
+              const articles = await tx.article.findMany({
+                where: { filterSetId },
+                select: { id: true, tags: true },
+              });
+              for (const article of articles) {
+                const values = new Set(
+                  matchingTagValues(JSON.parse(article.tags), options),
+                );
+                const data = options
+                  .filter((option) => values.has(option.value))
+                  .map((option) => ({
+                    articleId: article.id,
+                    filterOptionId: option.id,
+                    filterSetId,
+                  }));
+                if (data.length) await tx.articleOption.createMany({ data });
+              }
+            } else if (
+              existing?.filters.some(
+                (old) => old.id === saved.id && old.source === "tag",
+              )
+            ) {
+              await tx.articleOption.deleteMany({
+                where: { filterSetId, option: { filterId: saved.id } },
+              });
+            }
+          }
+          return filterSetId;
+        },
+        { timeout: 20_000, isolationLevel: "Serializable" },
+      );
+    } catch (error) {
+      if ((error as { code?: string })?.code !== "P2034" || attempt >= 2)
+        throw error;
+    }
+  }
 }

@@ -4,10 +4,10 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { FilterEngineError } from "../services/filter-engine.server";
 import { getFilterHomePreview } from "../services/filter-home.server";
-import { authenticate } from "../shopify.server";
+import { authenticatePaidAdmin } from "../services/billing.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { session } = await authenticate.admin(request);
+  const { session } = await authenticatePaidAdmin(request);
 
   try {
     const preview = await getFilterHomePreview(

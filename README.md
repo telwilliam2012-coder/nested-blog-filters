@@ -168,7 +168,17 @@ Los colores se personalizan por bloque desde **Tienda online → Temas → Perso
 en la plantilla de blog, seleccionando **Filtros del blog**. Los controles
 **Color de fondo del Badge** (`#0e5a44`), **Color de texto del Badge** (`#ffffff`)
 y **Color de acento general** (`#245c4c`) actualizan los indicadores numéricos
-activos, las selecciones y los estados de los botones. Las variables
+activos, las selecciones y los estados de los botones. También se pueden configurar:
+
+- **Paleta general**: texto principal, texto secundario e iconos (incluido el
+  placeholder del buscador), fondo del bloque y desplegables, fondos suaves y bordes.
+- **Buscador**: fondo del recuadro y colores de fondo y texto del botón Buscar.
+- **Selecciones activas**: fondo y texto de filtros/opciones seleccionados y de
+  las etiquetas que aparecen debajo de los filtros, incluido su icono de quitar.
+
+Los colores específicos de buscador y selecciones son opcionales. Al dejarlos
+vacíos se usa la paleta general; el botón Buscar conserva el acento y texto blanco.
+Los estados de foco y hover también respetan los colores configurados. Las variables
 `--nbf-badge-bg`, `--nbf-badge-text` y `--nbf-accent` quedan
 limitadas al ID del bloque; las variables de uso `--nbf-color-badge-bg`,
 `--nbf-color-badge-text` y `--nbf-color-accent` las consumen mediante `var()` con respaldo,
@@ -417,6 +427,377 @@ otros filtros pueden seguir siendo independientes. La cuadrícula muestra las
 imágenes de los artículos cuando están disponibles, con carga diferida.
 
 Referencias: [etiquetas e imagen de los artículos](https://shopify.dev/docs/api/admin-graphql/2026-07/objects/Article).
+
+## Fase 5 — Recepción local de webhooks
+
+`shopify.app.toml` dirige `app/uninstalled`, `customers/data_request`,
+`customers/redact` y `shop/redact` a **POST `/api/webhooks`**. Los tres eventos
+de privacidad se registran mediante `compliance_topics`; `app/scopes_update`
+conserva su ruta existente.
+
+El receptor valida el HMAC sobre el cuerpo original usando `webhooks.validate`
+del SDK oficial de Shopify y el adaptador Web API para Request. Devuelve 401
+si la firma falta o es incorrecta. No necesita cargar sesiones ni renovar tokens,
+por lo que puede procesar una desinstalación con credenciales revocadas.
+
+`app/uninstalled` y `shop/redact` eliminan los conjuntos y sesiones de esa tienda
+en una transacción de SQLite. Las relaciones de Prisma eliminan en cascada filtros,
+opciones, artículos indexados, asignaciones y sincronizaciones. Antes del borrado,
+el dominio del payload firmado debe coincidir con la cabecera de tienda. Los
+reintentos devuelven 200 aunque los registros ya no existan. Si falla la base de
+datos, la transacción revierte y no se confirma el evento como procesado.
+
+La app no almacena clientes ni pedidos. `customers/data_request` y
+`customers/redact` devuelven 200 con cuerpo vacío sin guardar ni registrar su
+payload. Si se incorpora información de clientes, estos casos deberán implementar
+su exportación o borrado antes de confirmar el procesamiento.
+
+La antigua ruta `/webhooks/app/uninstalled` comparte el nuevo controlador para
+aceptar entregas de configuraciones previas. Las pruebas usan firmas reales y una
+SQLite temporal con las migraciones del proyecto; no alteran `prisma/dev.sqlite`.
+La configuración queda preparada localmente; su registro y la verificación de
+entregas desde Shopify requieren aplicar la configuración en una tienda de desarrollo.
+
+Referencias: [privacidad de Shopify](https://shopify.dev/docs/apps/build/compliance/privacy-law-compliance)
+y [validación de entregas](https://shopify.dev/docs/apps/build/webhooks/verify-deliveries).
+
+## Fase 5 — Facturación recurrente
+
+El modo normal usa **Shopify App Pricing / Managed Pricing**. Los planes y las pruebas
+se configuran en el panel de precios de Shopify; el archivo `shopify.app.toml`
+no define planes mediante un bloque `[billing]`. Los valores compartidos de
+`app/billing-plans.ts` alimentan las tarjetas locales y los identificadores del
+SDK. No publican ni modifican los precios de Shopify.
+
+| Plan | Mensual | Anual | Prueba gratis |
+| --- | --- | --- | --- |
+| Pro | 4.99 USD | 40.99 USD | 7 días |
+| Premium | 9.99 USD | 90.99 USD | 7 días |
+
+El control local solicitado consulta la Admin API autenticada mediante
+`billing.check({ isTest: true })` en desarrollo.
+El loader principal y cada loader/action de datos exigen una suscripción
+recurrente `ACTIVE` de Pro o Premium. Una compra única o una suscripción
+pendiente, congelada, cancelada o con otro nombre no habilitan el panel.
+Una tienda sin pago activo se dirige a `/app/billing`; Ayuda permanece accesible
+con autenticación. Un fallo de la API no se trata como una aprobación.
+
+En producción, `managed-pricing.server.ts` consulta la Active Subscription API
+de Partner `2026-07`. Obtiene los IDs de tienda y app mediante la Admin API
+autenticada y comprueba que ambos y el client ID coincidan con el contrato.
+El nivel procede de los `items.handle` actuales `pro` o `premium` con precio
+`FlatRatePrice`, nunca de parámetros, importes o cambios de plan pendientes.
+Un contrato nulo significa ausencia de suscripción activa; los errores impiden
+el acceso con 503 y no se convierten en aprobación ni en una segunda compra.
+
+Configura `SHOPIFY_PARTNER_ID` y `SHOPIFY_PARTNER_API_ACCESS_TOKEN` en Render
+con un cliente Partner API que tenga permiso `Manage apps`. El Partner ID de
+la URL de Partners no es el organization ID del Dev Dashboard. Los accesos
+administrativos fuerzan una consulta fresca; el storefront usa caché positiva
+de hasta 30 segundos, acotada a 512 tiendas y a los próximos bordes de ciclo o
+ensayo, sin reutilizar datos vencidos cuando falle la API. Desarrollo y pruebas
+conservan Admin legacy, salvo opt-in `SHOPIFY_BILLING_VERIFICATION=partner`.
+
+El entorno local activa temporalmente `SHOPIFY_BILLING_MODE=manual_test` en
+`.env`. Solo funciona con `NODE_ENV=development` o `test`; en producción se
+conserva el modo normal aunque esa variable esté presente. Al pulsar Elegir Pro
+o Premium, el POST autenticado comprueba primero si ya existe una suscripción activa.
+Si no existe, ejecuta directamente `appSubscriptionCreate` mediante la Admin API,
+con `test: true` literal, 7 días de prueba y un cargo cada 30 días: Pro 4.99 USD
+o Premium 9.99 USD. Los términos proceden de las constantes del servidor; se ignoran
+importes, pruebas y URLs que envíe el navegador. No se crean cargos en un GET.
+
+La mutación hace un único intento y muestra los `userErrors` reales de Shopify.
+Si recibe una `confirmationUrl` HTTPS de la tienda autenticada o de
+`admin.shopify.com`, usa la redirección del SDK con `target: "_top"`.
+La URL de retorno estable lleva a `/app` dentro del Admin para volver a comprobar
+la suscripción; crear un registro pendiente no habilita el panel. No hay cobros
+reales en este modo. Para desactivarlo, elimina `SHOPIFY_BILLING_MODE` o establece
+`managed` y reinicia `npm run dev`.
+
+**Esta opción no evita las restricciones de plataforma.** La mutación no crea
+un catálogo de planes Managed ni cambia el método de precios registrado para
+la app. Si Shopify prohíbe Billing API para esa app, también rechazará la
+mutación de prueba: habrá que habilitar Manual Pricing donde Shopify lo permita
+o configurar los planes Managed en Partner Dashboard. La configuración de
+precios pertenece a Partner Dashboard, aunque el desarrollo esté en Dev Dashboard.
+No se altera automáticamente esa configuración remota.
+
+En el modo normal, al pulsar Pro o Premium, un POST autenticado comprueba el acceso y utiliza
+`SHOPIFY_APP_HANDLE`; si está vacío, consulta
+`currentAppInstallation { app { handle } }` como alternativa para abrir:
+
+`https://admin.shopify.com/store/{store_handle}/charges/{app_handle}/pricing_plans`
+
+Ambas tarjetas abren la misma pantalla nativa: allí se selecciona y aprueba el
+plan definitivo. La configuración local usa `handle = "nested-blog-filters"` en
+`shopify.app.toml` y `SHOPIFY_APP_HANDLE=nested-blog-filters` en `.env`, con el slug
+indicado para este proyecto. Debe coincidir con el handle real de la app en Shopify;
+no es el client ID ni el nombre visible. Si cambia, actualiza ambos archivos y
+reinicia `npm run dev` para cargar el entorno. La tienda procede de la sesión y el destino se valida en
+el servidor. Importes, URLs y pruebas enviados por el navegador se ignoran.
+En el modo normal no se llama a `appSubscriptionCreate`. Ninguno de los dos modos usa `billing.request` ni `billing.require`.
+
+La navegación usa `context.redirect(url, { target: "_top" })` del SDK, conservando
+sus respuestas de App Bridge para salir del iframe. El POST conserva únicamente
+`shop`, `host`, `embedded`, `locale` y `admin_theme`, sin copiar tokens ni
+firmas. Las respuestas de autenticación y redirección se propagan intactas.
+Los errores conservan el tipo real y los detalles de Shopify saneados en el log;
+los fallos de validación devuelven 422 y los de conexión 503, sin convertirlos
+en un 502 ni reintentar la creación de cargos.
+
+Configura el Welcome link de ambos planes como `/app` en Shopify. Al volver,
+el servidor consulta otra vez el pago; `charge_id`, `approved` y `plan_handle`
+no conceden acceso. Si no se confirma una suscripción, se muestran de nuevo las
+tarjetas locales, sin redirigir automáticamente a la pantalla nativa en un bucle.
+
+En desarrollo, `isTest: true` permite comprobar las suscripciones de prueba de
+la integración Admin legacy. Los contratos nuevos de Partner no tienen un campo
+`test` ni `status`; el objeto activo, sus items y las fechas de ciclo/ensayo son
+la fuente de verificación. Un ensayo puede tener `currentBillingCycle: null`
+y un contrato de desarrollo puede tener precio cero. Las condiciones del flujo
+hosted las controla Shopify. El panel y sus errores usan los cinco idiomas.
+
+Las pruebas ejecutan el SDK real con respuestas GraphQL locales y SQLite
+temporal, simulan las mutaciones de prueba y verifican la salida del iframe,
+el control de acceso y el retorno. No crean suscripciones reales. La aprobación
+y visibilidad de la suscripción todavía requieren una prueba en la tienda.
+
+En desarrollo, Vite escucha en `127.0.0.1` con `strictPort: true` para conservar
+el puerto asignado por Shopify CLI. El watcher excluye `artifacts/` para evitar
+recargas o bloqueos `EBUSY` por registros de verificación en Windows. Si el túnel
+devuelve HTML de error, el panel muestra un mensaje traducido de conexión y
+conserva el tratamiento de las respuestas de autenticación.
+
+Referencias: [facturación del SDK](https://shopify.dev/docs/api/shopify-app-react-router/latest/apis/billing),
+[Shopify App Pricing](https://shopify.dev/docs/apps/launch/billing/shopify-app-pricing)
+y [redirección a planes y comprobación del estado](https://shopify.dev/docs/apps/launch/billing/shopify-app-pricing/redirect-plan-selection-page).
+
+### Funciones y permisos por plan
+
+| Función | Pro | Premium |
+| --- | --- | --- |
+| Blogs activos | 1 | Todos los blogs configurados |
+| Filtros por blog | Hasta 3 | Hasta 10 (límite técnico) |
+| Filtros anidados y búsqueda | Sí | Sí |
+| Edición de artículos | Individual | Individual y masiva |
+| Colores y cinco idiomas | Sí | Sí |
+| Estadísticas | No | Vistas, filtros y búsquedas |
+| Informes | No | Por blog/día; 7, 30 o 90 días |
+
+Los límites se verifican en el servidor. Pro activa el conjunto más antiguo
+(createdAt/id) y sus tres primeros filtros en orden. Al bajar de plan se guardan
+los demás datos, pero dejan de estar activos en la tienda. Los conjuntos que
+exceden el plan pueden editarse sin aumentar su número de filtros. Las altas
+concurrentes se protegen con transacciones Serializable; las acciones masivas
+de Pro se rechazan antes de mutar Shopify. El plan no procede de formularios ni URL.
+
+La pantalla /app/billing permite gestionar el plan actual o cambiarlo. El antiguo
+nombre Starter ya no concede acceso y una suscripción antigua llamada Pro no se
+convierte automáticamente en Premium por su precio anterior.
+
+### Estadísticas Premium
+
+/app/analytics muestra vistas de páginas con el bloque, interacciones con filtros
+y búsquedas enviadas, además del top 10 de filtros por interacciones. No son
+personas únicas, conversiones ni tráfico histórico.
+analytics.js se carga aparte del bundle principal. Solo envía eventos si
+customerPrivacy.analyticsProcessingAllowed() permite análisis; si la API falta
+o falla, no envía nada. El editor de temas queda excluido.
+
+El POST firmado /apps/nested-filters/events llega a /proxy/nested-filters/events.
+El servidor verifica la tienda y Premium. No se guardan IP, cookies, identidades,
+URL completas ni texto buscado. Los tokens aleatorios viven en el documento;
+los recibos son hashes acotados al conjunto/tienda. Al recibir eventos o consultar
+informes se eliminan los agregados fuera de la ventana de 90 días y recibos de más
+de dos días. El borrado de conjuntos elimina métricas y recibos en cascada.
+`FilterUsageDaily` almacena únicamente el ID del filtro y sus conteos diarios.
+Los cambios de selección y retiradas individuales se atribuyen al filtro validado
+contra la tienda/blog. Limpiar todos suma solo al contador general. Los eventos
+anteriores sin ID de filtro no se convierten en rankings históricos ficticios.
+
+SQLite local y PostgreSQL tienen esquemas e historiales separados. Para Render
+con la base existente, sigue [la guía PostgreSQL](docs/deployment-postgresql.md):
+hay que revisar el esquema y su historial antes de adoptar el baseline.
+La inspección de producción debe realizarse en solo lectura antes de migrar;
+configurar una `DATABASE_URL` no demuestra que el servicio ya use esa base.
+
+### Campos para Shopify Partners
+
+Display name: Pro (handle pro) y Premium (handle premium), ambos por debajo de
+18 caracteres. Precios: 4.99 USD mensual / 40.99 USD anual para Pro; 9.99 USD
+mensual / 90.99 USD anual para Premium. Prueba de 7 días para ambos.
+
+Copia estos Top features en inglés: cada entrada tiene menos de 40 caracteres
+y ninguna columna supera las ocho entradas disponibles.
+
+| Pro | Premium |
+| --- | --- |
+| 1 blog | All store blogs |
+| Up to 3 filters per blog | Up to 10 filters per blog |
+| Nested filters and article search | Blog views and usage analytics |
+| Individual article editing | Bulk article editing |
+| Custom colors and 5 languages | Reports by blog and day |
+| Theme editor app block | 7, 30 and 90-day reports |
+| | Custom colors and 5 languages |
+| | Everything in Pro |
+
+Si se pide Welcome link dentro de la app, usa /app. Los precios se configuran en
+Shopify, las tarjetas locales no crean planes. El verificador Partner de producción
+está implementado y probado con respuestas simuladas. Su validación real requiere
+configurar las credenciales en Render, revisar la PostgreSQL existente y desplegar
+el backend y la extensión de tema. Un test local no acredita por sí solo el estado
+de esos servicios externos.
+
+## URLs públicas de desarrollo y ficha de Partners
+
+`shopify.app.toml` usa `https://nested-blog-filters.onrender.com`. En Render,
+`SHOPIFY_APP_URL` debe contener ese mismo origen estable. Los retornos OAuth son
+`/auth/callback` y `/auth/shopify/callback`; el App Proxy apunta al controlador
+`/proxy/nested-filters` y sus eventos llegan a `/proxy/nested-filters/events`.
+
+La ruta pública `/privacy`, en `app/routes/privacy.tsx`, devuelve HTML en español
+con la política de Nested Blog Filters & Search: datos de Shopify, PostgreSQL
+en producción (confirmado por el responsable de la app), seguridad, no venta
+de datos y soporte en `telwilliam2012@gmail.com`. `/tos` conserva su respuesta
+provisional independiente. Sus direcciones completas se guardan como
+`PRIVACY_POLICY_URL` y `TOS_URL` en el entorno y se documentan como comentarios
+en el TOML.
+Los nombres `privacy_policy_url` y `tos_url` no son campos nativos del esquema
+TOML instalado: los enlaces de la ficha se introducen en Shopify Partners.
+La raíz `https://trycloudflare.com` pertenece al proveedor y no sirve estas rutas.
+
+El desarrollo local puede utilizar un túnel temporal con una configuración
+separada. No sustituyas las URLs de producción por ese túnel. Modificar archivos
+locales no actualiza por sí solo la ficha de Partners ni publica la extensión.
+
+El archivo `react-router.config.ts` configura `routeDiscovery.mode = "initial"`
+para incluir todos los metadatos de rutas desde la primera carga. Así, la
+navegación de Polaris a Ayuda no necesita descubrir la ruta mediante una
+petición adicional a `/__manifest`. Los módulos JavaScript y los loaders siguen
+cargándose según se necesitan; autenticación y facturación se mantienen en sus
+loaders. Después de cambiar esta configuración, reinicia el servidor de
+desarrollo y vuelve a abrir la app desde Shopify.
+
+
+## Producción en Render con PostgreSQL
+
+Usa [la guía PostgreSQL](docs/deployment-postgresql.md), `Dockerfile.postgresql`
+y las variables de `.env.production.example`. El historial PostgreSQL y la
+generación del cliente están separados del entorno SQLite local. Revisa y
+preserva los datos del contenedor actual antes de cambiar el proveedor.
+
+### Alternativa con SQLite y volumen persistente
+
+La preparación queda local: no se ha desplegado ningún servicio ni cambiado la
+ficha de Partners. El servidor usa `SHOPIFY_APP_URL` en tiempo de ejecución.
+`npm start` fuerza `NODE_ENV=production`, comprueba la configuración, aplica
+`prisma migrate deploy` y solo después abre el servidor de React Router.
+Un error de migración impide el arranque. `HOST` vale `0.0.0.0` por defecto y
+se respeta el `PORT` asignado por el proveedor. El modo manual de cobros de prueba
+queda desactivado en producción por su control existente.
+
+Prisma conserva SQLite y las cuatro migraciones existentes. La URL procede de
+`DATABASE_URL`: en local, `file:dev.sqlite` sigue señalando a
+`prisma/dev.sqlite`; en nube, usa `file:/data/dev.sqlite` y monta un volumen
+persistente en **/data**, incluido su journal/WAL. El directorio debe existir y
+ser escribible antes de arrancar. Una ruta absoluta por sí sola no crea un
+volumen persistente: hay que adjuntarlo en el proveedor. Usa **una sola instancia**.
+Sin volumen, los archivos pueden perderse al reiniciar o desplegar.
+
+### Variables y arranque
+
+Para esta alternativa, adapta `DATABASE_URL` y usa el Dockerfile SQLite;
+no subas el `.env` local. Define `SHOPIFY_APP_URL` con el origen HTTPS estable
+asignado por Render o Railway, `SHOPIFY_API_KEY` y `SHOPIFY_API_SECRET` de la misma
+app, `SCOPES` igual a los permisos configurados, y `DATABASE_URL=file:/data/dev.sqlite`.
+Mantén `SHOPIFY_BILLING_MODE=managed` y `SHOPIFY_BILLING_TEST=false`. El proceso
+rechaza una URL vacía, HTTP o un quick tunnel de trycloudflare.com en producción.
+Las credenciales de la plataforma tienen prioridad sobre cualquier archivo local.
+
+La imagen Docker genera Prisma y compila con dependencias de build; la etapa
+final conserva las dependencias de producción, Prisma CLI, migraciones, scripts
+y build. Excluye `.env`, metadatos del CLI y archivos SQLite del contexto Docker.
+El contenedor ejecuta directamente `node scripts/start-production.mjs`, el mismo
+script de `npm start`, para recibir y propagar las señales de apagado.
+`npm run docker-start` es un alias de `npm start`.
+
+### Render
+
+1. Crea un Web Service con runtime Docker desde la carpeta que contiene el
+   Dockerfile. Puedes usar `render.yaml`, que declara una instancia, disco de
+   1 GB en `/data`, plan Starter y comprobación `/health`. El disco requiere un
+   servicio de pago; no se ha contratado desde esta sesión.
+2. Completa las variables secretas y el dominio HTTPS asignado al servicio.
+   Si la URL todavía no aparece al crear el servicio, introdúcela desde Environment
+   en cuanto Render la asigne y vuelve a desplegar.
+3. Deja el comando predeterminado del Dockerfile (equivalente a `npm start`). No pongas las migraciones
+   en pre-deploy: el disco solo está disponible en el proceso de ejecución.
+
+### Railway
+
+1. Importa el proyecto con su Dockerfile y `railway.json`; se define una sola
+   réplica y healthcheck `/health`; se conserva el arranque del Dockerfile.
+2. **Adjunta manualmente un volumen en /data**. `railway.json` no lo crea.
+3. Genera el dominio público desde Networking y pon su origen HTTPS en
+   `SHOPIFY_APP_URL`. Añade el resto de variables de la plantilla y despliega.
+   Respeta el `PORT` que Railway inyecta; no actives suspensión/serverless para
+   esta app, que debe recibir webhooks aunque el comerciante no esté conectado.
+
+### Migrar la base actual sin incluirla en la imagen
+
+No basta con generar tablas: hay que importar la base local para conservar
+filtros y sesiones. La base contiene tokens de Shopify; transfiérela por un canal
+privado y conserva una copia segura fuera de Git.
+
+1. Pausa las modificaciones locales durante la migración y crea una carpeta
+   `backups`. Ejecuta:
+
+   `npm run db:backup -- backups/dev-backup.sqlite`
+
+   El script usa `VACUUM INTO` para generar un snapshot consistente, incluyendo
+   los datos confirmados que estén en WAL. No sobrescribe una copia existente.
+   No se ha copiado ni publicado la base real como parte de esta preparación.
+2. Levanta el servicio con su volumen, todavía **sin cambiar las URLs de Partners**.
+   El primer arranque puede crear una base vacía con sus tablas. Sube la copia
+   como `/data/import.sqlite`, nunca directamente sobre un archivo abierto:
+   en Render usa SSH/SCP según su panel; en Railway selecciona explícitamente
+   el proyecto/servicio/volumen y usa `railway volume files upload` para cargar
+   `backups/dev-backup.sqlite` como `/import.sqlite` dentro del volumen.
+3. En la Shell del servicio, sin tráfico comercial, usa el SQLite CLI incluido
+   en la imagen para comprobar e importar mediante su API de backup:
+
+   `sqlite3 /data/import.sqlite "PRAGMA integrity_check;"`
+
+   `sqlite3 /data/dev.sqlite ".backup '/data/before-import.sqlite'"`
+
+   `sqlite3 /data/dev.sqlite ".restore '/data/import.sqlite'"`
+
+   La comprobación debe devolver `ok`. Si SQLite informa `busy`, detén la operación
+   y repítela en una ventana sin escrituras; conserva las copias originales.
+   No reemplaces la base con `cp` mientras haya conexiones abiertas.
+4. Reinicia el servicio para cerrar conexiones antiguas y volver a aplicar las
+   migraciones pendientes. Comprueba `/health` (200), `/privacy` y `/tos`;
+   verifica los datos importados sin mostrar tokens, por ejemplo el número de
+   filas de `FilterSet`. Reinicia otra vez y confirma que el recuento permanece.
+5. Configura backups periódicos del volumen y snapshots SQLite con una política
+   de retención; no guardes la única copia en el mismo disco.
+
+### Cambiar las URLs solo después de verificar el servicio
+
+Cuando el dominio estable, la importación y la persistencia estén comprobados,
+actualiza la configuración de producción de Shopify: `application_url` al origen
+estable y `auth.redirect_urls` a ese origen más `/auth/callback`. En una configuración
+TOML separada de producción, usa `automatically_update_urls_on_dev=false` para que
+una sesión local no cambie esa URL. Webhooks y proxy siguen utilizando sus rutas
+relativas. Después se publica la configuración con el flujo autorizado del CLI.
+Los enlaces de privacidad y términos se cambian en la ficha de Partners cuando
+sus documentos definitivos estén listos; las rutas actuales siguen siendo borradores.
+
+Fuentes: [discos Render](https://render.com/docs/disks),
+[volúmenes Railway](https://docs.railway.com/volumes),
+[SQLite VACUUM INTO](https://www.sqlite.org/lang_vacuum.html)
+y [variables de Prisma 6](https://www.prisma.io/docs/orm/v6/more/dev-environment/environment-variables).
 
 This is a template for building a [Shopify app](https://shopify.dev/docs/apps/getting-started) using [React Router](https://reactrouter.com/). It was forked from the [Shopify Remix app template](https://github.com/Shopify/shopify-app-template-remix) and converted to React Router.
 

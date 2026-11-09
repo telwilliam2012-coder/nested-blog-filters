@@ -5,7 +5,12 @@ import type { loader, action } from "../routes/app.articles";
 
 type Props = Awaited<ReturnType<typeof loader>>;
 
-export function ArticleManager({ sets, management, loadError }: Props) {
+export function ArticleManager({
+  sets,
+  management,
+  loadError,
+  planAccess,
+}: Props) {
   const { t } = useAdminI18n();
   const fetcher = useFetcher<typeof action>();
   const navigate = useNavigate();
@@ -23,6 +28,10 @@ export function ArticleManager({ sets, management, loadError }: Props) {
   const editingDisabled = busy || locked || Boolean(loadError);
   const filter = set?.filters.find((item) => item.id === filterId);
   const submit = fetcher.submit;
+
+  useEffect(() => {
+    if (!planAccess.bulkEditing) setSelected((current) => current.slice(0, 1));
+  }, [planAccess.bulkEditing]);
 
   useEffect(() => {
     if (
@@ -70,7 +79,13 @@ export function ArticleManager({ sets, management, loadError }: Props) {
   }
 
   function saveAttributes() {
-    if (!set || !management || !filter) return;
+    if (
+      !set ||
+      !management ||
+      !filter ||
+      (!planAccess.bulkEditing && selected.length > 1)
+    )
+      return;
     const digests = Object.fromEntries(
       management.articles
         .filter((article) => selected.includes(article.id))
@@ -106,6 +121,16 @@ export function ArticleManager({ sets, management, loadError }: Props) {
 
   return (
     <s-page heading={t("Atributos de artículos")}>
+      {!planAccess.bulkEditing && (
+        <s-banner heading={t("Edición individual incluida")} tone="info">
+          <s-paragraph>
+            {t(
+              "Tu plan permite editar un artículo a la vez. Premium incluye edición masiva.",
+            )}
+          </s-paragraph>
+          <s-button href="/app/billing">{t("Ver planes")}</s-button>
+        </s-banner>
+      )}
       <s-link slot="breadcrumb-actions" href="/app/filters">
         {t("Conjuntos de filtros")}
       </s-link>
@@ -240,23 +265,25 @@ export function ArticleManager({ sets, management, loadError }: Props) {
                 </s-paragraph>
               ) : (
                 <>
-                  <s-checkbox
-                    label={t("Seleccionar los artículos de esta página")}
-                    checked={
-                      selected.length === management.articles.length &&
-                      selected.length > 0
-                    }
-                    disabled={locked || busy || Boolean(loadError)}
-                    onChange={(event) =>
-                      setSelected(
-                        event.currentTarget.checked
-                          ? management.articles
-                              .filter((article) => article.attributes)
-                              .map((article) => article.id)
-                          : [],
-                      )
-                    }
-                  />
+                  {planAccess.bulkEditing && (
+                    <s-checkbox
+                      label={t("Seleccionar los artículos de esta página")}
+                      checked={
+                        selected.length === management.articles.length &&
+                        selected.length > 0
+                      }
+                      disabled={locked || busy || Boolean(loadError)}
+                      onChange={(event) =>
+                        setSelected(
+                          event.currentTarget.checked
+                            ? management.articles
+                                .filter((article) => article.attributes)
+                                .map((article) => article.id)
+                            : [],
+                        )
+                      }
+                    />
+                  )}
                   <s-table>
                     <s-table-header-row>
                       <s-table-header>{t("Selección")}</s-table-header>
@@ -282,7 +309,9 @@ export function ArticleManager({ sets, management, loadError }: Props) {
                                 const checked = event.currentTarget.checked;
                                 setSelected((current) =>
                                   checked
-                                    ? [...new Set([...current, article.id])]
+                                    ? planAccess.bulkEditing
+                                      ? [...new Set([...current, article.id])]
+                                      : [article.id]
                                     : current.filter((id) => id !== article.id),
                                 );
                               }}
@@ -444,6 +473,7 @@ export function ArticleManager({ sets, management, loadError }: Props) {
                   disabled={
                     editingDisabled ||
                     !selected.length ||
+                    (!planAccess.bulkEditing && selected.length > 1) ||
                     !filter ||
                     (mode !== "replace" && !optionIds.length)
                   }

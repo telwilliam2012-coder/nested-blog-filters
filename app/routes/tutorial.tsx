@@ -51,7 +51,7 @@ export function loader() {
           </li>
           <li>
             <h2>Import articles and assign options</h2>
-            <p>In <strong>Articles</strong>, choose the filter set for your blog and click <strong>Sync from Shopify</strong>. Once the articles are imported, assign options individually or in bulk and save your changes to Shopify. Use article attributes for metafield filters, or matching Shopify article tags for tag filters. Only published articles appear in the blog results; synchronize again after changes made outside the app.</p>
+            <p>In <strong>Articles</strong>, choose the filter set for your blog and click <strong>Sync from Shopify</strong>. Once the articles are imported, assign options individually, or in bulk with Premium, and save your changes to Shopify. Use article attributes for metafield filters, or matching Shopify article tags for tag filters. Only published articles appear in the blog results; synchronize again after changes made outside the app.</p>
           </li>
           <li>
             <h2>Add the app block in the theme editor</h2>
@@ -65,6 +65,7 @@ export function loader() {
           <li>
             <h2>Save and test your blog</h2>
             <p>Save the theme, open the blog, and select a category. Check that the relevant nested filters appear, test search, and clear the selections. If results are missing, check the blog's filter set, published articles, assignments, synchronization, and proxy path.</p>
+            <p>With Premium, allow analytics in the store's privacy controls, visit the blog outside the theme editor, and then open <strong>Analytics</strong> in the app. Counts represent consented views of pages containing the block, not unique visitors. The filter ranking starts with new attributed interactions after the tracking update is deployed; earlier totals are not converted into ranking data.</p>
           </li>
         </ol>
       </article>
@@ -86,7 +87,7 @@ export function loader() {
           </li>
           <li>
             <h3>Importa los artículos y asigna opciones</h3>
-            <p>En <strong>Artículos</strong>, elige el conjunto de tu blog y pulsa <strong>Sincronizar desde Shopify</strong>. Una vez importados los artículos, asigna opciones de forma individual o masiva y guarda los cambios en Shopify. Utiliza atributos de artículo para filtros de metacampos o etiquetas de Shopify coincidentes para filtros de etiquetas. Solo los artículos publicados aparecen en los resultados del blog; vuelve a sincronizar después de cambios realizados fuera de la app.</p>
+            <p>En <strong>Artículos</strong>, elige el conjunto de tu blog y pulsa <strong>Sincronizar desde Shopify</strong>. Una vez importados los artículos, asigna opciones de forma individual, o masiva con Premium, y guarda los cambios en Shopify. Utiliza atributos de artículo para filtros de metacampos o etiquetas de Shopify coincidentes para filtros de etiquetas. Solo los artículos publicados aparecen en los resultados del blog; vuelve a sincronizar después de cambios realizados fuera de la app.</p>
           </li>
           <li>
             <h3>Añade el bloque de la app en el editor de temas</h3>
@@ -100,6 +101,7 @@ export function loader() {
           <li>
             <h3>Guarda y prueba tu blog</h3>
             <p>Guarda el tema, abre el blog y selecciona una categoría. Comprueba que aparezcan los filtros anidados correspondientes, prueba la búsqueda y limpia las selecciones. Si faltan resultados, revisa el conjunto del blog, los artículos publicados, las asignaciones, la sincronización y la ruta del proxy.</p>
+            <p>Con Premium, permite el análisis en los controles de privacidad de la tienda, visita el blog fuera del editor de temas y abre <strong>Estadísticas</strong> en la app. Los conteos representan vistas consentidas de páginas que contienen el bloque, no visitantes únicos. El ranking de filtros empieza con nuevas interacciones atribuidas después de desplegar la actualización de seguimiento; los totales anteriores no se convierten en datos del ranking.</p>
           </li>
         </ol>
       </article>

@@ -13,9 +13,14 @@ export function AdminPageError() {
     return boundary.error(error);
   }
   const message =
-    isRouteErrorResponse(error) && typeof error.data === "string"
-      ? error.data
-      : "No se pudo completar la operación. Recarga la página y vuelve a intentarlo.";
+    isRouteErrorResponse(error) &&
+    error.status >= 500 &&
+    typeof error.data === "string" &&
+    /<!doctype\s+html|<html(?:\s|>)/i.test(error.data)
+      ? "La conexión con el servidor se interrumpió. Recarga la aplicación y vuelve a intentarlo."
+      : isRouteErrorResponse(error) && typeof error.data === "string"
+        ? error.data
+        : "No se pudo completar la operación. Recarga la página y vuelve a intentarlo.";
   return (
     <s-page heading={t("No se pudo completar la operación")}>
       <s-section>

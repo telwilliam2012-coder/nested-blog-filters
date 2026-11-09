@@ -319,11 +319,20 @@ test(
         deviceScaleFactor: 1,
         mobile: true,
       });
+      const mobileGeometry = await evaluate(`({
+        innerWidth,
+        documentWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+        drawerWidth: document.querySelector('#nbf-help-drawer').getBoundingClientRect().width,
+      })`);
+      const mobileDiagnostic = JSON.stringify(mobileGeometry);
+      assert.equal(mobileGeometry.documentWidth, 375, mobileDiagnostic);
+      assert.equal(mobileGeometry.innerWidth, 375, mobileDiagnostic);
       assert.equal(
-        await evaluate(
-          "document.querySelector('#nbf-help-drawer').getBoundingClientRect().width <= 375 && document.documentElement.scrollWidth <= innerWidth",
-        ),
+        mobileGeometry.drawerWidth <= 375 &&
+          mobileGeometry.scrollWidth <= mobileGeometry.innerWidth,
         true,
+        mobileDiagnostic,
       );
       await call("Emulation.clearDeviceMetricsOverride");
       await evaluate(

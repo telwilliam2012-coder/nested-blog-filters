@@ -10,7 +10,7 @@ generator client {
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
   provider = "sqlite"
-  url      = "file:dev.sqlite"
+  url      = env("DATABASE_URL")
 }
 
 model Session {
@@ -43,9 +43,11 @@ model FilterSet {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  filters  Filter[]
-  articles Article[]
-  sync     ArticleSync?
+  filters           Filter[]
+  articles          Article[]
+  sync              ArticleSync?
+  analyticsDays     AnalyticsDaily[]
+  analyticsReceipts AnalyticsReceipt[]
 
   @@unique([shop, blogId])
 }
@@ -61,19 +63,20 @@ model ArticleSync {
 }
 
 model Filter {
-  id          String   @id @default(cuid())
-  filterSetId String
-  key         String
-  label       String
-  position    Int      @default(0)
-  source      String   @default("metafield")
-  parentKey   String?
-  parentValues String  @default("[]")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  filterSetId  String
+  key          String
+  label        String
+  position     Int      @default(0)
+  source       String   @default("metafield")
+  parentKey    String?
+  parentValues String   @default("[]")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  filterSet FilterSet      @relation(fields: [filterSetId], references: [id], onDelete: Cascade)
+  filterSet FilterSet          @relation(fields: [filterSetId], references: [id], onDelete: Cascade)
   options   FilterOption[]
+  usageDays FilterUsageDaily[]
 
   // Composite references keep options within their filter set.
   @@unique([id, filterSetId])
@@ -134,4 +137,49 @@ model ArticleOption {
   @@id([articleId, filterOptionId])
   @@index([articleId, filterSetId])
   @@index([filterOptionId, filterSetId])
+}
+
+// Anonymous daily totals. No IPs, visitor identities, cookies or search text.
+model AnalyticsDaily {
+  id                 String @id @default(cuid())
+  filterSetId        String
+  day                String
+  pageViews          Int    @default(0)
+  filterInteractions Int    @default(0)
+  searchSubmissions  Int    @default(0)
+
+  filterSet FilterSet @relation(fields: [filterSetId], references: [id], onDelete: Cascade)
+
+  @@unique([filterSetId, day])
+  @@index([day])
+}
+
+// Short-lived hashes of random, per-document event tokens prevent retry duplication.
+// These tokens are never persisted in the visitor's browser or reused across pages.
+model AnalyticsReceipt {
+  id          String @id
+  filterSetId String
+  pageHash    String
+  day         String
+  kind        String
+
+  filterSet FilterSet @relation(fields: [filterSetId], references: [id], onDelete: Cascade)
+
+  @@index([filterSetId, pageHash, day])
+  @@index([day])
+}
+
+// Counts attributed filter interactions; labels and option values are not stored.
+model FilterUsageDaily {
+  id           String @id @default(cuid())
+  filterId     String
+  filterSetId  String
+  day          String
+  interactions Int    @default(0)
+
+  filter Filter @relation(fields: [filterId, filterSetId], references: [id, filterSetId], onDelete: Cascade)
+
+  @@unique([filterId, day])
+  @@index([filterSetId, day])
+  @@index([day])
 }

@@ -5,7 +5,7 @@ import { before, after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
-let vite, renderArticleManager;
+let vite, renderArticleManager, getPlanAccess;
 before(async () => {
   vite = await createServer({
     root: fileURLToPath(new URL("../", import.meta.url)),
@@ -21,12 +21,13 @@ before(async () => {
   ({ renderArticleManager } = await vite.ssrLoadModule(
     "/tests/article-manager-render.tsx",
   ));
+  ({ getPlanAccess } = await vite.ssrLoadModule("/app/billing-plans.ts"));
 });
 after(async () => {
   await vite?.close();
 });
 
-async function renderManager(sources) {
+async function renderManager(sources, plan = "Premium", withArticles = false) {
   const filters = sources.map((source, index) => ({
     id: `filter-${index}`,
     source,
@@ -36,10 +37,16 @@ async function renderManager(sources) {
   const props = {
     sets: [{ id: "set", name: "Filtros del blog" }],
     loadError: null,
+    planAccess: getPlanAccess(plan),
     management: {
       set: { id: "set", revision: 0, sync: null, filters },
-      articles: [],
-      total: 0,
+      articles: withArticles
+        ? [
+            { id: "article-1", title: "Primera", attributes: {} },
+            { id: "article-2", title: "Segunda", attributes: {} },
+          ]
+        : [],
+      total: withArticles ? 2 : 0,
       page: 1,
       totalPages: 0,
     },
@@ -58,6 +65,21 @@ test("a tag-only set displays all three filters and selects the first one", asyn
   assert.ok(
     html.includes("Puedes añadirlas, quitarlas o reemplazarlas desde aquí"),
   );
+});
+
+test("Pro keeps individual editing and hides the bulk selection control", async () => {
+  const html = await renderManager(["tag"], "Pro", true);
+  assert.ok(html.includes("Edición individual incluida"));
+  assert.ok(html.includes('href="/app/billing"'));
+  assert.ok(!html.includes('label="Seleccionar los artículos de esta página"'));
+  assert.ok(html.includes('label="Seleccionar Primera"'));
+  assert.ok(html.includes('label="Seleccionar Segunda"'));
+});
+
+test("Premium retains bulk selection", async () => {
+  const html = await renderManager(["tag"], "Premium", true);
+  assert.ok(html.includes('label="Seleccionar los artículos de esta página"'));
+  assert.ok(!html.includes("Edición individual incluida"));
 });
 
 test("mixed sets retain metadata filters and tag filters in the same selector", async () => {

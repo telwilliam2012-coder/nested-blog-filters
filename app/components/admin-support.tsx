@@ -63,9 +63,14 @@ function HelpWidget({
     const element = dialog.current;
     if (!element) return;
     const onClose = () => {
+      if (element.open) return;
       closeHelp();
       if (opener.current?.isConnected) opener.current.focus();
       else launcher.current?.focus();
+    };
+    const onCancel = (event: Event) => {
+      event.preventDefault();
+      closeHelp();
     };
     const onClick = (event: MouseEvent) => {
       if (event.target !== element) return;
@@ -79,9 +84,11 @@ function HelpWidget({
         closeHelp();
     };
     element.addEventListener("close", onClose);
+    element.addEventListener("cancel", onCancel);
     element.addEventListener("click", onClick);
     return () => {
       element.removeEventListener("close", onClose);
+      element.removeEventListener("cancel", onCancel);
       element.removeEventListener("click", onClick);
     };
   }, [closeHelp]);

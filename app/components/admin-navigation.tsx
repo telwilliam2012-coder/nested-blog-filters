@@ -8,6 +8,8 @@ export function AdminNavigation() {
       <s-link href="/app/blogs">{t("Blogs")}</s-link>
       <s-link href="/app/filters">{t("Filtros")}</s-link>
       <s-link href="/app/articles">{t("Artículos")}</s-link>
+      <s-link href="/app/analytics">{t("Estadísticas")}</s-link>
+      <s-link href="/app/billing">{t("Planes")}</s-link>
       <s-link href="/app/help">{t("Ayuda")}</s-link>
     </s-app-nav>
   );

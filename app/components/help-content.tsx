@@ -134,6 +134,11 @@ export function HelpContents() {
               "Abre Tienda online → Temas → Personalizar, entra en la plantilla del blog y selecciona Filtros del blog. Ajusta Color de fondo del Badge, Color de texto del Badge y Color de acento general; después guarda el tema.",
             )}
           </s-paragraph>
+          <s-paragraph>
+            {t(
+              "También puedes cambiar la Paleta general, el Buscador y las Selecciones activas: fondos, textos, bordes y etiquetas seleccionadas. Deja vacíos los colores opcionales para heredar la paleta general.",
+            )}
+          </s-paragraph>
         </Faq>
         <Faq question={t("¿Por qué no aparecen mis filtros?")}>
           <s-paragraph>

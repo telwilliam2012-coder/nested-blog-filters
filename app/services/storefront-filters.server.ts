@@ -1,11 +1,18 @@
 import type { PrismaClient } from "@prisma/client";
+import type { AppPlanAccess } from "../billing-plans";
+import type { authenticate } from "../shopify.server";
 
 import prisma from "../db.server";
 import { FilterEngineError, getFilteredArticles } from "./filter-engine.server";
 
+type ProxyContext = Awaited<ReturnType<typeof authenticate.public.appProxy>>;
 type ProxyAuthenticator = (
   request: Request,
-) => Promise<{ session: { shop: string } | undefined }>;
+) => Promise<Pick<ProxyContext, "session" | "admin">>;
+type PlanResolver = (
+  admin: NonNullable<ProxyContext["admin"]>,
+  expectedShop: string,
+) => Promise<AppPlanAccess | null>;
 
 const responseHeaders = {
   "Cache-Control": "private, no-store",
@@ -15,6 +22,7 @@ const responseHeaders = {
 export async function getStorefrontFilters(
   shop: string,
   params: URLSearchParams,
+  planAccess: AppPlanAccess,
   db: PrismaClient = prisma,
 ) {
   const blogId = params.get("blogId") ?? "";
@@ -49,6 +57,17 @@ export async function getStorefrontFilters(
   if (!filterSet) {
     return { status: "unconfigured" as const };
   }
+  if (planAccess.maxBlogs !== null) {
+    const activeSets = await db.filterSet.findMany({
+      where: { shop },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true },
+      take: planAccess.maxBlogs,
+    });
+    if (!activeSets.some((set) => set.id === filterSet.id)) {
+      return { status: "unconfigured" as const };
+    }
+  }
   const result = await getFilteredArticles(
     {
       shop,
@@ -59,6 +78,7 @@ export async function getStorefrontFilters(
       query: params.get("q") ?? "",
     },
     db,
+    { maxFilters: planAccess.maxFilters },
   );
 
   return {
@@ -96,6 +116,7 @@ export async function handleStorefrontFiltersRequest(
   request: Request,
   authenticateProxy: ProxyAuthenticator,
   db: PrismaClient = prisma,
+  resolvePlan?: PlanResolver,
 ) {
   if (request.method !== "GET") {
     return Response.json(
@@ -108,7 +129,7 @@ export async function handleStorefrontFiltersRequest(
   }
 
   try {
-    const { session } = await authenticateProxy(request);
+    const { session, admin } = await authenticateProxy(request);
     if (!session) {
       return Response.json(
         { error: "UNAUTHORIZED" },
@@ -118,9 +139,19 @@ export async function handleStorefrontFiltersRequest(
         },
       );
     }
+    // A signed proxy request identifies the shop; it does not prove a paid tier.
+    const planAccess =
+      admin && resolvePlan ? await resolvePlan(admin, session.shop) : null;
+    if (!planAccess) {
+      return Response.json(
+        { status: "unconfigured" },
+        { headers: responseHeaders },
+      );
+    }
     const result = await getStorefrontFilters(
       session.shop,
       new URL(request.url).searchParams,
+      planAccess,
       db,
     );
     return Response.json(result, { headers: responseHeaders });

@@ -15,21 +15,35 @@ import {
 import { FilterSetEditor } from "../components/filter-set-editor";
 import { toFilterSetDraft } from "../filter-draft";
 import { actionError, loaderError } from "../services/admin-errors.server";
-import { getFilterSet, saveFilterSet } from "../services/filter-admin.server";
+import {
+  getFilterPlanUsage,
+  getFilterSet,
+  saveFilterSet,
+} from "../services/filter-admin.server";
 import { requireShopifyBlog } from "../services/shopify-content.server";
-import { authenticate } from "../shopify.server";
+import { authenticatePaidAdmin } from "../services/billing.server";
 export {
   AdminPageError as ErrorBoundary,
   adminHeaders as headers,
 } from "../components/admin-page-error";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session, planAccess } = await authenticatePaidAdmin(request);
   const set = await getFilterSet(session.shop, params.filterSetId ?? "").catch(
     loaderError,
   );
   const blog = await requireShopifyBlog(admin, set.blogId).catch(loaderError);
-  return { set, blog };
+  const usage = await getFilterPlanUsage(session.shop, planAccess).catch(
+    loaderError,
+  );
+  return {
+    set,
+    blog,
+    planAccess,
+    storefrontInactive:
+      usage.activeFilterSetIds !== null &&
+      !usage.activeFilterSetIds.includes(set.id),
+  };
 }
 
 export const shouldRevalidate: ShouldRevalidateFunction = ({
@@ -41,7 +55,7 @@ export const shouldRevalidate: ShouldRevalidateFunction = ({
     : defaultShouldRevalidate;
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session, planAccess } = await authenticatePaidAdmin(request);
   try {
     const raw = String((await request.formData()).get("configuration") ?? "");
     if (raw.length > 200_000)
@@ -60,6 +74,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       session.shop,
       params.filterSetId ?? "",
       draft,
+      planAccess,
     );
     return redirect(`/app/filters/${id}?saved=1`);
   } catch (error) {
@@ -69,7 +84,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
 }
 
 export default function EditFiltersPage() {
-  const { set, blog } = useLoaderData<typeof loader>();
+  const { set, blog, planAccess, storefrontInactive } =
+    useLoaderData<typeof loader>();
   const error = useActionData<typeof action>();
   const navigation = useNavigation();
   const [search] = useSearchParams();
@@ -79,6 +95,8 @@ export default function EditFiltersPage() {
       key={`${set.id}:${set.revision}`}
       initial={toFilterSetDraft(set)}
       blogs={[blog]}
+      planAccess={planAccess}
+      storefrontInactive={storefrontInactive}
       setId={set.id}
       locked={Boolean(set.sync)}
       inUse={set.filters.flatMap((filter) =>

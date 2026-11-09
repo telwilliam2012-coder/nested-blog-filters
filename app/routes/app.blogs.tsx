@@ -4,7 +4,7 @@ import { useLoaderData } from "react-router";
 
 import { TitleBar } from "@shopify/app-bridge-react";
 
-import { authenticate } from "../shopify.server";
+import { authenticatePaidAdmin } from "../services/billing.server";
 import prisma from "../db.server";
 import { useAdminI18n } from "../i18n/admin-i18n";
 export {
@@ -38,7 +38,7 @@ type BlogsGraphQLResponse = {
 // ----------------------------------
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticatePaidAdmin(request);
 
   const response = await admin.graphql(`
     #graphql

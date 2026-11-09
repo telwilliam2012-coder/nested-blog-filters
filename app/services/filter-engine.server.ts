@@ -71,7 +71,14 @@ export async function getFilteredArticles(
     query = "",
   }: FilterEngineInput,
   db: PrismaClient = prisma,
+  limits: { maxFilters?: number } = {},
 ) {
+  if (
+    limits.maxFilters !== undefined &&
+    (!Number.isSafeInteger(limits.maxFilters) || limits.maxFilters < 1)
+  ) {
+    throw new FilterEngineError("Invalid filter limit.", "INVALID_SELECTION");
+  }
   const skip = (page - 1) * pageSize;
   if (
     typeof query !== "string" ||
@@ -124,6 +131,9 @@ export async function getFilteredArticles(
         include: {
           filters: {
             orderBy: [{ position: "asc" }, { id: "asc" }],
+            ...(limits.maxFilters === undefined
+              ? {}
+              : { take: limits.maxFilters }),
             include: {
               options: { orderBy: [{ position: "asc" }, { id: "asc" }] },
             },

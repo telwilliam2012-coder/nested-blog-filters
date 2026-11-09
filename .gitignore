@@ -16,6 +16,11 @@ database.sqlite
 
 .env
 .env.*
+!.env.example
+!.env.production.example
+/backups/
+/data/
+/prisma/dev.sqlite-*
 
 
 

@@ -1,0 +1,185 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+// One filter configuration per Shopify blog and shop. Shopify IDs are full GIDs.
+model FilterSet {
+  id        String   @id @default(cuid())
+  shop      String
+  blogId    String
+  name      String
+  revision  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  filters           Filter[]
+  articles          Article[]
+  sync              ArticleSync?
+  analyticsDays     AnalyticsDaily[]
+  analyticsReceipts AnalyticsReceipt[]
+
+  @@unique([shop, blogId])
+}
+
+model ArticleSync {
+  id            String   @id @default(cuid())
+  filterSetId   String   @unique
+  cursor        String?
+  startedAt     DateTime @default(now())
+  importedCount Int      @default(0)
+
+  filterSet FilterSet @relation(fields: [filterSetId], references: [id], onDelete: Cascade)
+}
+
+model Filter {
+  id           String   @id @default(cuid())
+  filterSetId  String
+  key          String
+  label        String
+  position     Int      @default(0)
+  source       String   @default("metafield")
+  parentKey    String?
+  parentValues String   @default("[]")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  filterSet FilterSet          @relation(fields: [filterSetId], references: [id], onDelete: Cascade)
+  options   FilterOption[]
+  usageDays FilterUsageDaily[]
+
+  // Composite references keep options within their filter set.
+  @@unique([id, filterSetId])
+  @@unique([filterSetId, key])
+  @@index([filterSetId, position])
+}
+
+model FilterOption {
+  id          String   @id @default(cuid())
+  filterId    String
+  filterSetId String
+  value       String
+  label       String
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  filter   Filter          @relation(fields: [filterId, filterSetId], references: [id, filterSetId], onDelete: Cascade)
+  articles ArticleOption[]
+
+  @@unique([id, filterSetId])
+  @@unique([filterId, value])
+  @@index([filterId, position])
+}
+
+// Local article index; importing articles from Shopify belongs to a later phase.
+model Article {
+  id               String    @id @default(cuid())
+  filterSetId      String
+  shopifyArticleId String
+  title            String
+  handle           String
+  publishedAt      DateTime?
+  tags             String    @default("[]")
+  imageUrl         String?
+  imageAlt         String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  filterSet FilterSet       @relation(fields: [filterSetId], references: [id], onDelete: Cascade)
+  options   ArticleOption[]
+
+  @@unique([id, filterSetId])
+  @@unique([filterSetId, shopifyArticleId])
+  @@index([filterSetId, publishedAt, id])
+}
+
+// An article may have several options from the same filter (OR selection).
+model ArticleOption {
+  articleId      String
+  filterOptionId String
+  filterSetId    String
+
+  // Both foreign keys share filterSetId, preventing cross-blog/shop assignments.
+  article Article      @relation(fields: [articleId, filterSetId], references: [id, filterSetId], onDelete: Cascade)
+  option  FilterOption @relation(fields: [filterOptionId, filterSetId], references: [id, filterSetId], onDelete: Cascade)
+
+  @@id([articleId, filterOptionId])
+  @@index([articleId, filterSetId])
+  @@index([filterOptionId, filterSetId])
+}
+
+// Anonymous daily totals. No IPs, visitor identities, cookies or search text.
+model AnalyticsDaily {
+  id                 String @id @default(cuid())
+  filterSetId        String
+  day                String
+  pageViews          Int    @default(0)
+  filterInteractions Int    @default(0)
+  searchSubmissions  Int    @default(0)
+
+  filterSet FilterSet @relation(fields: [filterSetId], references: [id], onDelete: Cascade)
+
+  @@unique([filterSetId, day])
+  @@index([day])
+}
+
+// Short-lived hashes of random, per-document event tokens prevent retry duplication.
+// These tokens are never persisted in the visitor's browser or reused across pages.
+model AnalyticsReceipt {
+  id          String @id
+  filterSetId String
+  pageHash    String
+  day         String
+  kind        String
+
+  filterSet FilterSet @relation(fields: [filterSetId], references: [id], onDelete: Cascade)
+
+  @@index([filterSetId, pageHash, day])
+  @@index([day])
+}
+
+// Counts attributed filter interactions; labels and option values are not stored.
+model FilterUsageDaily {
+  id           String @id @default(cuid())
+  filterId     String
+  filterSetId  String
+  day          String
+  interactions Int    @default(0)
+
+  filter Filter @relation(fields: [filterId, filterSetId], references: [id, filterSetId], onDelete: Cascade)
+
+  @@unique([filterId, day])
+  @@index([filterSetId, day])
+  @@index([day])
+}

@@ -4,7 +4,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { BlogHome, type BlogOverview } from "../components/blog-home";
 import { getFilterHomeOverview } from "../services/filter-home.server";
-import { authenticate } from "../shopify.server";
+import { authenticatePaidAdmin } from "../services/billing.server";
 
 type OverviewResponse = {
   data?: {
@@ -18,7 +18,7 @@ type OverviewResponse = {
 };
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticatePaidAdmin(request);
 
   // Keep the local filter summary available even if Shopify's overview fails.
   const filtersPromise = getFilterHomeOverview(session.shop).catch((error) => {

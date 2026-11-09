@@ -14,6 +14,42 @@
     {% if block.settings.accent_color != blank %}
       --nbf-accent: {{ block.settings.accent_color }};
     {% endif %}
+    {% if block.settings.text_color != blank %}
+      --nbf-text: {{ block.settings.text_color }};
+    {% endif %}
+    {% if block.settings.muted_text_color != blank %}
+      --nbf-muted-text: {{ block.settings.muted_text_color }};
+    {% endif %}
+    {% if block.settings.surface_color != blank %}
+      --nbf-surface-bg: {{ block.settings.surface_color }};
+    {% endif %}
+    {% if block.settings.soft_bg_color != blank %}
+      --nbf-soft-bg: {{ block.settings.soft_bg_color }};
+    {% endif %}
+    {% if block.settings.border_color != blank %}
+      --nbf-border-color: {{ block.settings.border_color }};
+    {% endif %}
+    {% if block.settings.search_bg_color != blank %}
+      --nbf-search-bg: {{ block.settings.search_bg_color }};
+    {% endif %}
+    {% if block.settings.search_button_bg_color != blank %}
+      --nbf-search-button-bg: {{ block.settings.search_button_bg_color }};
+    {% endif %}
+    {% if block.settings.search_button_text_color != blank %}
+      --nbf-search-button-text: {{ block.settings.search_button_text_color }};
+    {% endif %}
+    {% if block.settings.selected_bg_color != blank %}
+      --nbf-selected-bg: {{ block.settings.selected_bg_color }};
+    {% endif %}
+    {% if block.settings.selected_text_color != blank %}
+      --nbf-selected-text: {{ block.settings.selected_text_color }};
+    {% endif %}
+    {% if block.settings.chip_bg_color != blank %}
+      --nbf-chip-bg: {{ block.settings.chip_bg_color }};
+    {% endif %}
+    {% if block.settings.chip_text_color != blank %}
+      --nbf-chip-text: {{ block.settings.chip_text_color }};
+    {% endif %}
   }
 {% endstyle %}
 
@@ -84,6 +120,7 @@
     <p class="nbf__fallback" data-blog-link><a href="{{ blog.url | escape }}">{{ 'filters.view_blog' | t }}</a></p>
     <noscript><p>{{ 'filters.no_script' | t }}</p></noscript>
   </nested-blog-filters>
+  <script src="{{ 'analytics.js' | asset_url }}" defer></script>
 {% elsif request.design_mode %}
   <p {{ block.shopify_attributes }}>{{ 'filters.choose_blog' | t }}</p>
 {% endif %}
@@ -109,6 +146,98 @@
       "default": "12"
     },
     {
+      "type": "header",
+      "content": "t:filters.colors_general"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "t:filters.accent_color",
+      "default": "#245c4c"
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "t:filters.text_color",
+      "default": "#20332e"
+    },
+    {
+      "type": "color",
+      "id": "muted_text_color",
+      "label": "t:filters.muted_text_color",
+      "info": "t:filters.muted_text_info",
+      "default": "#65756f"
+    },
+    {
+      "type": "color",
+      "id": "surface_color",
+      "label": "t:filters.surface_color",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "soft_bg_color",
+      "label": "t:filters.soft_bg_color",
+      "default": "#f3f7f5"
+    },
+    {
+      "type": "color",
+      "id": "border_color",
+      "label": "t:filters.border_color",
+      "default": "#dce5e0"
+    },
+    {
+      "type": "paragraph",
+      "content": "t:filters.colors_inheritance"
+    },
+    {
+      "type": "header",
+      "content": "t:filters.colors_search"
+    },
+    {
+      "type": "color",
+      "id": "search_bg_color",
+      "label": "t:filters.search_bg_color"
+    },
+    {
+      "type": "color",
+      "id": "search_button_bg_color",
+      "label": "t:filters.search_button_bg_color"
+    },
+    {
+      "type": "color",
+      "id": "search_button_text_color",
+      "label": "t:filters.search_button_text_color"
+    },
+    {
+      "type": "header",
+      "content": "t:filters.colors_selection"
+    },
+    {
+      "type": "color",
+      "id": "selected_bg_color",
+      "label": "t:filters.selected_bg_color"
+    },
+    {
+      "type": "color",
+      "id": "selected_text_color",
+      "label": "t:filters.selected_text_color"
+    },
+    {
+      "type": "color",
+      "id": "chip_bg_color",
+      "label": "t:filters.chip_bg_color"
+    },
+    {
+      "type": "color",
+      "id": "chip_text_color",
+      "label": "t:filters.chip_text_color"
+    },
+    {
+      "type": "header",
+      "content": "t:filters.colors_badges"
+    },
+    {
       "type": "color",
       "id": "badge_bg_color",
       "label": "t:filters.badge_bg_color",
@@ -119,12 +248,6 @@
       "id": "badge_text_color",
       "label": "t:filters.badge_text_color",
       "default": "#ffffff"
-    },
-    {
-      "type": "color",
-      "id": "accent_color",
-      "label": "t:filters.accent_color",
-      "default": "#245c4c"
     },
     {
       "type": "text",

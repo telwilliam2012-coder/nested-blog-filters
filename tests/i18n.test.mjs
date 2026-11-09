@@ -207,6 +207,24 @@ test("translated error pages preserve Shopify App Bridge control responses", asy
   assert.equal(bridge.includes("Impossible de terminer"), false);
 });
 
+test("upstream HTML errors show a translated connection message without exposing the proxy response", async () => {
+  const source =
+    "La conexión con el servidor se interrumpió. Recarga la aplicación y vuelve a intentarlo.";
+  for (const language of languages) {
+    const html = await renderAdminResponse(
+      language,
+      502,
+      "<!DOCTYPE html><html><body>trycloudflare.com 502: Bad gateway</body></html>",
+    );
+    assert.ok(
+      html.includes(escapeHtml(json(`app/locales/${language}.json`)[source])),
+      language,
+    );
+    assert.equal(html.includes("trycloudflare.com"), false);
+    assert.equal(html.includes("DOCTYPE"), false);
+  }
+});
+
 test("translated route boundaries retain Shopify reauthorization headers and inherited document headers", () => {
   const reauthorization = new Headers({
     "X-Shopify-API-Request-Failure-Reauthorize-Url":

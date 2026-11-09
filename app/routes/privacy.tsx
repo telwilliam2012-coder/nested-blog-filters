@@ -37,7 +37,7 @@ export function loader() {
         <header>
           <p class="brand">Dreamers APP · Nested Blog Filters &amp; Search</p>
           <h1 id="privacy-title-es">Política de privacidad</h1>
-          <p class="updated">Última actualización: <time datetime="2026-11-07">7 de noviembre de 2026</time></p>
+          <p class="updated">Última actualización: <time datetime="2026-11-08">8 de noviembre de 2026</time></p>
           <p>Esta política explica cómo Dreamers APP trata la información necesaria para ofrecer Nested Blog Filters &amp; Search, una aplicación para organizar, filtrar y buscar artículos de blogs de Shopify.</p>
         </header>
 
@@ -64,8 +64,15 @@ export function loader() {
           <p>Puedes solicitar información, corrección o eliminación de tus datos a través del correo de soporte. Para proteger la información, podemos necesitar verificar que estás autorizado para actuar en nombre de la tienda.</p>
         </section>
 
+        <section aria-labelledby="analitica">
+          <h2 id="analitica">5. Estadísticas de uso con consentimiento</h2>
+          <p>Si la tienda utiliza Premium y el visitante permite el análisis mediante la API de privacidad de Shopify, contamos vistas de páginas del blog que contienen el bloque de filtros, interacciones con filtros y búsquedas enviadas. Son contadores de actividad; no identifican visitantes únicos.</p>
+          <p>No guardamos en estas métricas direcciones IP, cookies, nombres, correos electrónicos, URL completas ni el texto de las búsquedas. Los eventos de filtro pueden incluir el identificador interno del filtro para contar su uso. Utilizamos tokens aleatorios limitados a cada documento y hashes técnicos temporales para evitar duplicados.</p>
+          <p>Los informes cubren una ventana de hasta 90 días UTC. Al recibir eventos o generar informes, eliminamos las agrupaciones anteriores a esa ventana y los recibos de deduplicación de más de dos días. La vista previa del editor de temas no genera estadísticas.</p>
+        </section>
+
         <section aria-labelledby="contacto">
-          <h2 id="contacto">5. Contacto de soporte</h2>
+          <h2 id="contacto">6. Contacto de soporte</h2>
           <p>Para preguntas sobre esta política o el tratamiento de tus datos, contacta con Dreamers APP en <a href="mailto:${DREAMERS_SUPPORT_EMAIL}">${DREAMERS_SUPPORT_EMAIL}</a>.</p>
         </section>
       </article>
@@ -74,7 +81,7 @@ export function loader() {
         <header>
           <p class="brand">Dreamers APP · Nested Blog Filters &amp; Search</p>
           <h2 id="privacy-title-en" class="policy-title">Privacy Policy</h2>
-          <p class="updated">Last updated: <time datetime="2026-11-07">November 7, 2026</time></p>
+          <p class="updated">Last updated: <time datetime="2026-11-08">November 8, 2026</time></p>
           <p>This policy explains how Dreamers APP handles the information needed to provide Nested Blog Filters &amp; Search, an application for organizing, filtering, and searching Shopify blog articles.</p>
         </header>
 
@@ -99,6 +106,13 @@ export function loader() {
           <h3 id="en-data-retention">Data Retention and Requests</h3>
           <p>We retain information for as long as needed to provide the service and meet applicable obligations. We process privacy and uninstallation notices sent by Shopify to manage store data.</p>
           <p>You may request information about your data, or its correction or deletion, by contacting our support email address. To protect the information, we may need to verify that you are authorized to act on behalf of the store.</p>
+        </section>
+
+        <section aria-labelledby="en-analytics">
+          <h3 id="en-analytics">Usage Analytics and Consent</h3>
+          <p>If the store uses Premium and the visitor permits analytics through Shopify's privacy API, we count views of blog pages containing the filter block, filter interactions, and submitted searches. These are activity counters; they do not identify unique visitors.</p>
+          <p>These metrics do not store IP addresses, cookies, names, email addresses, full URLs, or search text. Filter events may include the filter's internal identifier to count its usage. We use random tokens limited to each document and temporary technical hashes to prevent duplicates.</p>
+          <p>Reports cover a window of up to 90 UTC days. On event ingestion or report generation, we remove aggregates outside that window and deduplication receipts older than two days. Theme editor previews do not generate analytics.</p>
         </section>
 
         <section aria-labelledby="en-contact">

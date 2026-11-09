@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import type { AppPlanAccess } from "../billing-plans";
 import prisma from "../db.server";
 import { AdminInputError, requireRevision } from "./admin-errors.server";
 import { getFilterSet } from "./filter-admin.server";
@@ -251,8 +252,14 @@ export async function editArticleAttributes(
   shop: string,
   filterSetId: string,
   input: ArticleEdit,
+  planAccess: AppPlanAccess,
   db: PrismaClient = prisma,
 ) {
+  if (!planAccess)
+    throw new AdminInputError(
+      "No se pudo verificar el plan de la tienda.",
+      403,
+    );
   if (
     !input ||
     !Array.isArray(input.articleIds) ||
@@ -262,6 +269,11 @@ export async function editArticleAttributes(
     new Set(input.articleIds).size !== input.articleIds.length
   )
     throw new AdminInputError("Selecciona entre 1 y 25 artículos diferentes.");
+  if (!planAccess.bulkEditing && input.articleIds.length > 1)
+    throw new AdminInputError(
+      "Tu plan permite editar un artículo a la vez. Cambia a Premium para usar la edición masiva.",
+      403,
+    );
   if (
     !["append", "remove", "replace"].includes(input.mode) ||
     !Array.isArray(input.optionIds) ||

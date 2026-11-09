@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: nested-blog-filters
+    runtime: docker
+    plan: starter
+    numInstances: 1
+    healthCheckPath: /health
+    disk:
+      name: nested-blog-filters-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: SHOPIFY_APP_URL
+        sync: false
+      - key: SHOPIFY_API_KEY
+        sync: false
+      - key: SHOPIFY_API_SECRET
+        sync: false
+      - key: SCOPES
+        value: write_products,read_products,read_content,write_content,write_app_proxy
+      - key: DATABASE_URL
+        value: file:/data/dev.sqlite
+      - key: SHOPIFY_APP_HANDLE
+        value: nested-blog-filters
+      - key: SHOPIFY_BILLING_MODE
+        value: managed
+      - key: SHOPIFY_BILLING_TEST
+        value: "false"

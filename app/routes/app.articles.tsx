@@ -15,14 +15,14 @@ import {
   type ArticleEdit,
 } from "../services/article-admin.server";
 import { getFilterSet } from "../services/filter-admin.server";
-import { authenticate } from "../shopify.server";
+import { authenticatePaidAdmin } from "../services/billing.server";
 export {
   AdminPageError as ErrorBoundary,
   adminHeaders as headers,
 } from "../components/admin-page-error";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session, planAccess } = await authenticatePaidAdmin(request);
   const sets = await prisma.filterSet.findMany({
     where: { shop: session.shop },
     orderBy: [{ name: "asc" }, { id: "asc" }],
@@ -30,7 +30,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   });
   const params = new URL(request.url).searchParams;
   const id = params.get("filterSetId") ?? sets[0]?.id;
-  if (!id) return { sets, management: null, loadError: null };
+  if (!id) return { sets, management: null, loadError: null, planAccess };
   const set = await getFilterSet(session.shop, id).catch(loaderError);
   try {
     const management = await getArticleManagementPage(
@@ -39,19 +39,20 @@ export async function loader({ request }: LoaderFunctionArgs) {
       id,
       Number(params.get("page") ?? 1),
     );
-    return { sets, management, loadError: null };
+    return { sets, management, loadError: null, planAccess };
   } catch (error) {
     const result = actionError(error);
     return {
       sets,
       management: { set, articles: [], total: 0, page: 1, totalPages: 0 },
       loadError: result.error,
+      planAccess,
     };
   }
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session, planAccess } = await authenticatePaidAdmin(request);
   try {
     const form = await request.formData();
     const id = String(form.get("filterSetId") ?? "");
@@ -95,7 +96,13 @@ export async function action({ request }: ActionFunctionArgs) {
       } catch {
         throw new AdminInputError("La selección no es válida.");
       }
-      const count = await editArticleAttributes(admin, session.shop, id, input);
+      const count = await editArticleAttributes(
+        admin,
+        session.shop,
+        id,
+        input,
+        planAccess,
+      );
       return data({
         error: null,
         message: `Cambios guardados en ${count} artículos.`,

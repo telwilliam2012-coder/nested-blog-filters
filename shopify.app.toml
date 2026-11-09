@@ -2,8 +2,15 @@
 
 client_id = "eb3913f8d3e7dafd2231e5c920b97eb5"
 name = "Nested Blog Filters"
-application_url = "https://example.com"
+handle = "nested-blog-filters"
+application_url = "https://nested-blog-filters.onrender.com"
 embedded = true
+
+# Listing URLs are configured in Shopify Partners, not as TOML settings:
+# privacy_policy_url = "https://nested-blog-filters.onrender.com/privacy"
+# tos_url = "https://nested-blog-filters.onrender.com/tos"
+
+# Managed pricing plans: Shopify pricing dashboard. Local check: app/shopify.server.ts.
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
@@ -12,7 +19,7 @@ optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [app_proxy]
-url = "/proxy/nested-filters"
+url = "https://nested-blog-filters.onrender.com/proxy/nested-filters"
 prefix = "apps"
 subpath = "nested-filters"
 
@@ -44,8 +51,12 @@ type = "multi_line_text_field"
 api_version = "2026-10"
 
   [[webhooks.subscriptions]]
-  uri = "/webhooks/app/uninstalled"
+  uri = "/api/webhooks"
   topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/api/webhooks"
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/app/scopes_update"
@@ -78,8 +89,11 @@ api_version = "2026-10"
   query_filter = "product.status:'ACTIVE'"
 
 [auth]
-redirect_urls = [ ]
+redirect_urls = [
+  "https://nested-blog-filters.onrender.com/auth/callback",
+  "https://nested-blog-filters.onrender.com/auth/shopify/callback"
+]
 
 [build]
 include_config_on_deploy = true
-automatically_update_urls_on_dev = true
+automatically_update_urls_on_dev = false

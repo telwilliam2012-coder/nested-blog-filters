@@ -13,12 +13,15 @@ import {
 } from "react-router";
 import { FilterSetEditor } from "../components/filter-set-editor";
 import { actionError, loaderError } from "../services/admin-errors.server";
-import { saveFilterSet } from "../services/filter-admin.server";
+import {
+  getFilterPlanUsage,
+  saveFilterSet,
+} from "../services/filter-admin.server";
 import {
   getShopifyBlogs,
   requireShopifyBlog,
 } from "../services/shopify-content.server";
-import { authenticate } from "../shopify.server";
+import { authenticatePaidAdmin } from "../services/billing.server";
 import { useAdminI18n } from "../i18n/admin-i18n";
 export {
   AdminPageError as ErrorBoundary,
@@ -26,7 +29,10 @@ export {
 } from "../components/admin-page-error";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session, planAccess } = await authenticatePaidAdmin(request);
+  const usage = await getFilterPlanUsage(session.shop, planAccess).catch(
+    loaderError,
+  );
   const url = new URL(request.url);
   const result = await getShopifyBlogs(
     admin,
@@ -37,7 +43,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
     result.nodes.unshift(
       await requireShopifyBlog(admin, selected).catch(loaderError),
     );
-  return { ...result, selected: selected ?? result.nodes[0]?.id ?? "" };
+  return {
+    ...result,
+    selected: selected ?? result.nodes[0]?.id ?? "",
+    planAccess,
+    canCreate: usage.canCreate,
+  };
 }
 
 export const shouldRevalidate: ShouldRevalidateFunction = ({
@@ -49,7 +60,7 @@ export const shouldRevalidate: ShouldRevalidateFunction = ({
     : defaultShouldRevalidate;
 
 export async function action({ request }: ActionFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session, planAccess } = await authenticatePaidAdmin(request);
   try {
     const form = await request.formData();
     const raw = String(form.get("configuration") ?? "");
@@ -64,7 +75,13 @@ export async function action({ request }: ActionFunctionArgs) {
     } catch {
       return data({ error: "La configuración no es válida." }, { status: 400 });
     }
-    const id = await saveFilterSet(admin, session.shop, null, draft);
+    const id = await saveFilterSet(
+      admin,
+      session.shop,
+      null,
+      draft,
+      planAccess,
+    );
     return redirect(`/app/filters/${id}?saved=1`);
   } catch (error) {
     const result = actionError(error);
@@ -83,6 +100,8 @@ export default function NewFiltersPage() {
       <FilterSetEditor
         key={result.selected}
         blogs={result.nodes}
+        planAccess={result.planAccess}
+        canCreate={result.canCreate}
         initial={{
           name: t("Filtros del blog"),
           blogId: result.selected,
