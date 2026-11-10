@@ -8,9 +8,12 @@ const output = fileURLToPath(new URL("../build/ops/", import.meta.url));
 export async function buildProductionTools(outdir = output) {
   await build({
     absWorkingDir: root,
-    entryPoints: ["scripts/verify-managed-pricing.ts"],
+    entryPoints: [
+      "scripts/verify-managed-pricing.ts",
+      "scripts/configuration-transfer.ts",
+    ],
     outdir,
-    entryNames: "verify-managed-pricing",
+    entryNames: "[name]",
     outExtension: { ".js": ".mjs" },
     bundle: true,
     packages: "external",

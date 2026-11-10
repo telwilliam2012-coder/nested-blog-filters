@@ -1,5 +1,5 @@
 FROM node:22-alpine AS build
-RUN apk add --no-cache openssl
+RUN apk add --no-cache ca-certificates openssl
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -15,7 +15,7 @@ RUN node --test tests/postgresql-deployment.test.mjs \
     && npm cache clean --force
 
 FROM node:22-alpine AS runtime
-RUN apk add --no-cache openssl
+RUN apk add --no-cache ca-certificates openssl
 WORKDIR /app
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
