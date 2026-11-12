@@ -153,22 +153,26 @@ async function hostedPricingUrl(
 ) {
   // Resolve navigation on the server, using the authenticated shop rather than
   // URL parameters. Opening hosted pricing does not create or approve a charge.
-  let appHandle = process.env.SHOPIFY_APP_HANDLE?.trim();
-  if (!appHandle) {
-    const response = await context.admin.graphql(`#graphql
-      query BillingHostedPricingApp {
-        currentAppInstallation {
-          app { handle }
-        }
+  const response = await context.admin.graphql(`#graphql
+    query BillingHostedPricingApp {
+      currentAppInstallation {
+        app { handle }
       }
-    `);
-    const result = await response.json();
-    const errors = (result as { errors?: unknown[] }).errors;
-    if (!response.ok || errors?.length) {
-      throw new Error("Shopify hosted pricing configuration could not be read.");
     }
-    appHandle = result.data?.currentAppInstallation?.app?.handle;
+  `);
+  const result = await response.json();
+  const errors = (result as { errors?: unknown[] }).errors;
+  if (!response.ok || errors?.length) {
+    throw new Error("Shopify hosted pricing configuration could not be read.");
   }
+  // App handles can change independently of a deployed environment variable.
+  // Shopify's current registration wins; env is only a fallback for draft apps
+  // whose Admin API metadata has no handle yet. A failed read is never fallback.
+  const registeredHandle = result.data?.currentAppInstallation?.app?.handle;
+  if (registeredHandle != null && typeof registeredHandle !== "string")
+    throw new Error("Invalid Shopify hosted pricing configuration.");
+  const appHandle =
+    registeredHandle?.trim() || process.env.SHOPIFY_APP_HANDLE?.trim();
   return appHandle
     ? billingPricingUrl(context.session.shop, appHandle)
     : null;

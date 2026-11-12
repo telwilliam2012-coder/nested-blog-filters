@@ -523,23 +523,27 @@ o configurar los planes Managed en Partner Dashboard. La configuración de
 precios pertenece a Partner Dashboard, aunque el desarrollo esté en Dev Dashboard.
 No se altera automáticamente esa configuración remota.
 
-En el modo normal, al pulsar Pro o Premium, un POST autenticado comprueba el acceso y utiliza
-`SHOPIFY_APP_HANDLE`; si está vacío, consulta
-`currentAppInstallation { app { handle } }` como alternativa para abrir:
+En el modo normal, el loader autenticado comprueba el acceso y consulta
+`currentAppInstallation { app { handle } }` para construir el enlace de cada tarjeta.
+El handle registrado en Shopify tiene prioridad sobre `SHOPIFY_APP_HANDLE`;
+la variable se usa únicamente si Shopify devuelve un handle vacío. Un error de
+consulta no utiliza ese respaldo. Los botones abren fuera del iframe:
 
 `https://admin.shopify.com/store/{store_handle}/charges/{app_handle}/pricing_plans`
 
 Ambas tarjetas abren la misma pantalla nativa: allí se selecciona y aprueba el
-plan definitivo. La configuración local usa `handle = "nested-blog-filters"` en
-`shopify.app.toml` y `SHOPIFY_APP_HANDLE=nested-blog-filters` en `.env`, con el slug
-indicado para este proyecto. Debe coincidir con el handle real de la app en Shopify;
+plan definitivo. La configuración local usa `handle = "nested-blog-filters-search"` en
+`shopify.app.toml` y `SHOPIFY_APP_HANDLE=nested-blog-filters-search` en `.env`, con el slug
+verificado mediante la Admin API. Debe coincidir con el handle real de la app en Shopify;
 no es el client ID ni el nombre visible. Si cambia, actualiza ambos archivos y
 reinicia `npm run dev` para cargar el entorno. La tienda procede de la sesión y el destino se valida en
 el servidor. Importes, URLs y pruebas enviados por el navegador se ignoran.
 En el modo normal no se llama a `appSubscriptionCreate`. Ninguno de los dos modos usa `billing.request` ni `billing.require`.
 
-La navegación usa `context.redirect(url, { target: "_top" })` del SDK, conservando
-sus respuestas de App Bridge para salir del iframe. El POST conserva únicamente
+Los botones usan `href` y `target="_top"`, omitiendo atributos booleanos inactivos
+para que React 18 no los convierta en controles deshabilitados. El POST de respaldo
+usa `context.redirect(url, { target: "_top" })` del SDK, conservando
+sus respuestas de App Bridge para salir del iframe. Ese POST conserva únicamente
 `shop`, `host`, `embedded`, `locale` y `admin_theme`, sin copiar tokens ni
 firmas. Las respuestas de autenticación y redirección se propagan intactas.
 Los errores conservan el tipo real y los detalles de Shopify saneados en el log;

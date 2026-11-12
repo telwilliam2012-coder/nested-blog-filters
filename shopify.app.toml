@@ -2,7 +2,7 @@
 
 client_id = "eb3913f8d3e7dafd2231e5c920b97eb5"
 name = "Nested Blog Filters"
-handle = "nested-blog-filters"
+handle = "nested-blog-filters-search"
 application_url = "https://nested-blog-filters.onrender.com"
 embedded = true
 
@@ -95,5 +95,4 @@ redirect_urls = [
 ]
 
 [build]
-include_config_on_deploy = true
 automatically_update_urls_on_dev = false

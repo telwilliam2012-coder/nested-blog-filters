@@ -21,7 +21,7 @@ services:
       - key: DATABASE_URL
         value: file:/data/dev.sqlite
       - key: SHOPIFY_APP_HANDLE
-        value: nested-blog-filters
+        value: nested-blog-filters-search
       - key: SHOPIFY_BILLING_MODE
         value: managed
       - key: SHOPIFY_BILLING_TEST

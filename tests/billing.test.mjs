@@ -903,20 +903,51 @@ test("hosted pricing uses the authenticated shop and a validated app handle", as
   assert.equal(missing.init.status, 503);
   assert.match(missing.data.error, /SHOPIFY_APP_HANDLE/);
   process.env.SHOPIFY_APP_HANDLE = "nested-blog-filters";
-  appHandle = "different-admin-api-handle";
+  appHandle = "nested-blog-filters-search";
+  const registeredPricingUrl = billing.billingPricingUrl(shop, appHandle);
   const callsBeforeConfiguredRedirect = calls.filter((call) =>
     call.query.includes("BillingHostedPricingApp"),
   ).length;
   const response = await responseFrom(() =>
     billingRoute.action({ request: post("Pro") }),
   );
-  assert.equal(response.headers.get("Location"), pricingUrl);
+  assert.equal(response.headers.get("Location"), registeredPricingUrl);
   assert.equal(
     calls.filter((call) => call.query.includes("BillingHostedPricingApp"))
       .length,
-    callsBeforeConfiguredRedirect,
-    "the configured handle must be used without depending on Admin API metadata",
+    callsBeforeConfiguredRedirect + 1,
+    "Shopify's registered handle must override an obsolete configured value",
   );
+  assert.equal(
+    (await billing.loadBillingPlans(get("/app/billing"))).pricingUrl,
+    registeredPricingUrl,
+  );
+  appHandle = null;
+  const fallback = await responseFrom(() =>
+    billingRoute.action({ request: post("Premium") }),
+  );
+  assert.equal(fallback.headers.get("Location"), pricingUrl);
+  assert.equal(mutations().length, 0);
+});
+
+test("a failed registered-handle lookup cannot redirect through a stale environment value", async () => {
+  process.env.SHOPIFY_APP_HANDLE = "outdated-app-handle";
+  userErrors = [{ message: "App metadata is unavailable" }];
+  await assert.rejects(billing.loadBillingPlans(get("/app/billing")));
+  const failed = await billingRoute.action({ request: post("Premium") });
+  assert.equal(failed.init.status, 422);
+  assert.deepEqual(failed.data.details, ["App metadata is unavailable"]);
+  assert.equal(mutations().length, 0);
+});
+
+test("renaming the registered app refreshes the destination without redeploying environment variables", async () => {
+  process.env.SHOPIFY_APP_HANDLE = "outdated-app-handle";
+  for (const name of ["nested-blog-filters-search", "another-registered-handle"]) {
+    appHandle = name;
+    const selection = await billing.loadBillingPlans(get("/app/billing"));
+    assert.equal(selection.pricingUrl, billing.billingPricingUrl(shop, name));
+    assert.equal(selection.currentPlan, null);
+  }
   assert.equal(mutations().length, 0);
 });
 
