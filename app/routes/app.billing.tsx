@@ -42,7 +42,8 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function BillingPage() {
-  const { isTest, manualTest, currentPlan } = useLoaderData<typeof loader>();
+  const { isTest, manualTest, currentPlan, pricingUrl } =
+    useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
   const navigation = useNavigation();
   const location = useLocation();
@@ -52,6 +53,7 @@ export default function BillingPage() {
       isTest={isTest}
       manualTest={manualTest}
       currentPlan={currentPlan}
+      pricingUrl={pricingUrl}
       pending={navigation.state !== "idle"}
       pendingPlan={String(navigation.formData?.get("plan") ?? "")}
       error={result?.error}

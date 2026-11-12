@@ -148,6 +148,32 @@ export async function getVerifiedStorefrontPlan(
   return accessFromSubscriptions(subscriptions, billingIsTest());
 }
 
+async function hostedPricingUrl(
+  context: Pick<AdminContext, "admin" | "session">,
+) {
+  // Resolve navigation on the server, using the authenticated shop rather than
+  // URL parameters. Opening hosted pricing does not create or approve a charge.
+  let appHandle = process.env.SHOPIFY_APP_HANDLE?.trim();
+  if (!appHandle) {
+    const response = await context.admin.graphql(`#graphql
+      query BillingHostedPricingApp {
+        currentAppInstallation {
+          app { handle }
+        }
+      }
+    `);
+    const result = await response.json();
+    const errors = (result as { errors?: unknown[] }).errors;
+    if (!response.ok || errors?.length) {
+      throw new Error("Shopify hosted pricing configuration could not be read.");
+    }
+    appHandle = result.data?.currentAppInstallation?.app?.handle;
+  }
+  return appHandle
+    ? billingPricingUrl(context.session.shop, appHandle)
+    : null;
+}
+
 export async function loadBillingPlans(
   request: Request,
   authenticateAdmin: AdminAuthenticator = authenticate.admin,
@@ -155,10 +181,12 @@ export async function loadBillingPlans(
   const context = await authenticateAdmin(request);
   const isTest = billingIsTest();
   const currentAccess = await verifiedAdminAccess(context);
+  const manualTest = manualTestBillingEnabled();
   return {
     isTest,
-    manualTest: manualTestBillingEnabled(),
+    manualTest,
     currentPlan: currentAccess?.plan ?? null,
+    pricingUrl: manualTest ? null : await hostedPricingUrl(context),
   };
 }
 
@@ -188,21 +216,8 @@ export async function requestBillingPlan(
       return await requestTestSubscription(context, plan);
     }
 
-    // The configured pricing-page handle is authoritative. Unpublished apps
-    // can have a null Admin API handle, so only query it as a fallback.
-    let appHandle = process.env.SHOPIFY_APP_HANDLE?.trim();
-    if (!appHandle) {
-      const response = await context.admin.graphql(`#graphql
-        query BillingHostedPricingApp {
-          currentAppInstallation {
-            app { handle }
-          }
-        }
-      `);
-      const result = await response.json();
-      appHandle = result.data?.currentAppInstallation?.app?.handle;
-    }
-    if (!appHandle) {
+    const pricingUrl = await hostedPricingUrl(context);
+    if (!pricingUrl) {
       return data(
         {
           error:
@@ -212,7 +227,7 @@ export async function requestBillingPlan(
       );
     }
     // Keep the SDK's App Bridge response intact to navigate outside the iframe.
-    throw context.redirect(billingPricingUrl(context.session.shop, appHandle), {
+    throw context.redirect(pricingUrl, {
       target: "_top",
     });
   } catch (error) {

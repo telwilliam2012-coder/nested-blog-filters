@@ -11,6 +11,7 @@ export function BillingPlanPicker({
   pending = false,
   pendingPlan,
   currentPlan = null,
+  pricingUrl,
   error,
   errorDetails,
   onChoose,
@@ -20,6 +21,7 @@ export function BillingPlanPicker({
   pending?: boolean;
   pendingPlan?: string;
   currentPlan?: AppBillingPlanName | null;
+  pricingUrl: string | null;
   error?: string;
   errorDetails?: string[];
   onChoose: (plan: AppBillingPlanName) => void;
@@ -72,6 +74,7 @@ export function BillingPlanPicker({
         >
           {APP_BILLING_PLAN_NAMES.map((name) => {
             const plan = APP_BILLING_PLANS[name];
+            const hostedUrl = manualTest ? undefined : (pricingUrl ?? undefined);
             const amount = new Intl.NumberFormat(locale, {
               style: "currency",
               currency: plan.currencyCode,
@@ -109,9 +112,15 @@ export function BillingPlanPicker({
                   </s-unordered-list>
                   <s-button
                     variant="primary"
-                    disabled={pending}
-                    loading={pending && pendingPlan === name}
-                    onClick={() => onChoose(name)}
+                    href={hostedUrl}
+                    target={hostedUrl ? "_top" : undefined}
+                    // React 18 stringifies false on custom elements. Omit
+                    // inactive boolean attributes so Polaris keeps this usable.
+                    disabled={(!hostedUrl && pending) || undefined}
+                    loading={
+                      (!hostedUrl && pending && pendingPlan === name) || undefined
+                    }
+                    onClick={hostedUrl ? undefined : () => onChoose(name)}
                   >
                     {currentPlan === name
                       ? t("Gestionar plan")

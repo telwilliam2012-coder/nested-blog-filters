@@ -1,4 +1,5 @@
 /* eslint-env node */
+/* global globalThis */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
@@ -443,6 +444,7 @@ test("unpaid GETs redirect to plan selection without creating a charge", async (
     isTest: true,
     manualTest: false,
     currentPlan: null,
+    pricingUrl,
   });
   assert.equal(mutations().length, 0);
 });
@@ -569,6 +571,7 @@ test("manual test mode never creates a subscription on a GET", async () => {
     isTest: true,
     manualTest: true,
     currentPlan: null,
+    pricingUrl: null,
   });
   const wrongMethod = await billing.requestBillingPlan(get("/app/billing"));
   assert.equal(wrongMethod.status, 405);
@@ -1003,6 +1006,47 @@ test("plan selection renders prices and trial terms in all five languages", asyn
     assert.match(html, /90[.,]99/);
     assert.ok(html.includes("USD"));
   }
+});
+
+test("hosted plan buttons are enabled links that leave the iframe without submitting a charge", () => {
+  const html = renderBillingPlans("es");
+  const buttons = [...html.matchAll(/<s-button\b([^>]*)>(.*?)<\/s-button>/g)];
+  const choices = buttons.filter(([, , text]) => /^Elegir (Pro|Premium)$/.test(text));
+  assert.equal(choices.length, 2);
+  for (const [, attributes] of choices) {
+    assert.ok(attributes.includes(`href="${pricingUrl}"`));
+    assert.ok(attributes.includes('target="_top"'));
+    assert.doesNotMatch(attributes, /\b(?:disabled|loading)=/);
+  }
+});
+
+test("manual test buttons omit inactive boolean attributes and disable only while submitting", () => {
+  const idle = renderBillingPlans("es", null, { manualTest: true });
+  const busy = renderBillingPlans("es", null, {
+    manualTest: true,
+    pending: true,
+    pendingPlan: "Premium",
+  });
+  assert.doesNotMatch(idle, /\b(?:disabled|loading|target)=/);
+  assert.doesNotMatch(idle, /href="https:\/\/admin\.shopify\.com/);
+  const buttons = [...busy.matchAll(/<s-button\b([^>]*)>(.*?)<\/s-button>/g)];
+  assert.equal(buttons.length, 2);
+  assert.match(buttons[0][1], /disabled="true"/);
+  assert.doesNotMatch(buttons[0][1], /\bloading=/);
+  assert.match(buttons[1][1], /disabled="true"/);
+  assert.match(buttons[1][1], /loading="true"/);
+});
+
+test("hosted navigation is built from the authenticated shop and never browser return claims", async () => {
+  process.env.SHOPIFY_APP_HANDLE = "nested-blog-filters";
+  const result = await billing.loadBillingPlans(
+    get("/app/billing?shop=other.myshopify.com&plan_handle=premium&returnUrl=https://untrusted.example"),
+  );
+  assert.equal(result.pricingUrl, pricingUrl);
+  assert.equal(result.currentPlan, null);
+  assert.equal(mutations().length, 0);
+  process.env.SHOPIFY_BILLING_MODE = "manual_test";
+  assert.equal((await billing.loadBillingPlans(get("/app/billing"))).pricingUrl, null);
 });
 
 test("verified tiers carry the Pro and Premium permissions, never URL claims", async () => {
